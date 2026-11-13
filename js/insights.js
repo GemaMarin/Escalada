@@ -1,0 +1,299 @@
+// Cálculos: estadísticas, carga corporal, progreso, consejos y logros.
+import {
+  BODY_WEIGHTS, BODY_PARTS, RESULTS, ROUTE_GRADES, TAGS, boulderScale, intensity, isSent,
+  climbTags, tagLabel, gradeLabel,
+} from './model.js';
+
+export const parseDate = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+export const toISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+export const today = () => toISO(new Date());
+export const daysBetween = (a, b) => Math.round((parseDate(b) - parseDate(a)) / 86400000);
+export function weekStart(d) {
+  const x = new Date(d); const day = (x.getDay() + 6) % 7; x.setDate(x.getDate() - day); x.setHours(0, 0, 0, 0); return x;
+}
+
+export const sortSessions = (sessions) => [...sessions].sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || 0) - (a.createdAt || 0));
+export const allClimbs = (sessions) => sessions.flatMap((s) => (s.climbs || []).map((c) => ({ ...c, date: s.date, sessionId: s.id })));
+
+// ---------- Carga corporal ----------
+export function climbBodyLoad(c, settings) {
+  const load = {};
+  const k = (0.5 + intensity(c, settings)) * (1 + Math.log(Math.max(1, c.attempts || 1)));
+  const add = (part, v) => { load[part] = (load[part] || 0) + v * k; };
+  add('dedos', 1); add('antebrazos', c.discipline === 'route' ? 1.6 : 1);
+  if (c.discipline === 'route') add('piernas', 0.6);
+  for (const t of climbTags(c)) for (const [p, w] of Object.entries(BODY_WEIGHTS[t] || {})) add(p, w);
+  return load;
+}
+
+export function bodyLoad(sessions, settings) {
+  const total = Object.fromEntries(Object.keys(BODY_PARTS).map((p) => [p, 0]));
+  for (const c of allClimbs(sessions)) for (const [p, v] of Object.entries(climbBodyLoad(c, settings))) total[p] += v;
+  const sum = Object.values(total).reduce((a, b) => a + b, 0);
+  const max = Math.max(...Object.values(total), 0);
+  return { total, sum, max };
+}
+
+// Carga de sesión (sRPE: minutos × esfuerzo percibido, Foster 2001).
+export const sessionLoad = (s) => (s.duration || 0) * (s.rpe || 0);
+
+// ---------- Estadísticas básicas ----------
+export function summary(sessions, settings) {
+  const climbs = allClimbs(sessions);
+  const sent = climbs.filter(isSent);
+  const best = (disc, pred = isSent) => {
+    const xs = climbs.filter((c) => c.discipline === disc && pred(c));
+    return xs.length ? xs.reduce((m, c) => (c.grade > m.grade ? c : m)) : null;
+  };
+  const now = today();
+  const month = now.slice(0, 7);
+  return {
+    sessions: sessions.length,
+    climbs: climbs.length,
+    sent: sent.length,
+    flashes: climbs.filter((c) => c.result === 'flash' || c.result === 'onsight').length,
+    minutes: sessions.reduce((a, s) => a + (s.duration || 0), 0),
+    monthSessions: sessions.filter((s) => s.date.startsWith(month)).length,
+    bestBoulder: best('boulder'),
+    bestRoute: best('route'),
+    bestFlashBoulder: best('boulder', (c) => c.result === 'flash'),
+    bestFlashRoute: best('route', (c) => c.result === 'flash' || c.result === 'onsight'),
+    sendRate: climbs.length ? sent.length / climbs.length : 0,
+    label: (c) => (c ? gradeLabel(c, settings) : '—'),
+  };
+}
+
+export function pyramid(sessions, discipline, settings) {
+  const n = discipline === 'route' ? ROUTE_GRADES.length : boulderScale(settings).length;
+  const rows = Array.from({ length: n }, (_, i) => ({ grade: i, flash: 0, send: 0, project: 0 }));
+  for (const c of allClimbs(sessions)) {
+    if (c.discipline !== discipline || !rows[c.grade]) continue;
+    if (c.result === 'flash' || c.result === 'onsight') rows[c.grade].flash++;
+    else if (c.result === 'send') rows[c.grade].send++;
+    else rows[c.grade].project++;
+  }
+  let lo = rows.findIndex((r) => r.flash + r.send + r.project > 0);
+  let hi = rows.length - 1 - [...rows].reverse().findIndex((r) => r.flash + r.send + r.project > 0);
+  if (lo < 0) return [];
+  lo = Math.max(0, lo); hi = Math.min(n - 1, hi + 1);
+  return rows.slice(lo, hi + 1).reverse();
+}
+
+// Máximo grado encadenado por semana (últimas N semanas).
+export function weeklyProgress(sessions, discipline, weeks = 12) {
+  const start = weekStart(new Date()); start.setDate(start.getDate() - 7 * (weeks - 1));
+  const out = Array.from({ length: weeks }, (_, i) => {
+    const d = new Date(start); d.setDate(d.getDate() + 7 * i);
+    return { week: d, max: null, avg: null, count: 0 };
+  });
+  const buckets = out.map(() => []);
+  for (const c of allClimbs(sessions)) {
+    if (c.discipline !== discipline || !isSent(c)) continue;
+    const i = Math.floor((parseDate(c.date) - start) / (7 * 86400000));
+    if (i >= 0 && i < weeks) buckets[i].push(c.grade);
+  }
+  buckets.forEach((b, i) => {
+    if (!b.length) return;
+    const top = [...b].sort((x, y) => y - x).slice(0, 5);
+    out[i].max = Math.max(...b);
+    out[i].avg = top.reduce((a, x) => a + x, 0) / top.length;
+    out[i].count = b.length;
+  });
+  return out;
+}
+
+export function weeklyVolume(sessions, weeks = 12) {
+  const start = weekStart(new Date()); start.setDate(start.getDate() - 7 * (weeks - 1));
+  const out = Array.from({ length: weeks }, (_, i) => {
+    const d = new Date(start); d.setDate(d.getDate() + 7 * i);
+    return { week: d, boulder: 0, route: 0, load: 0 };
+  });
+  for (const s of sessions) {
+    const i = Math.floor((parseDate(s.date) - start) / (7 * 86400000));
+    if (i < 0 || i >= weeks) continue;
+    out[i].load += sessionLoad(s);
+    for (const c of s.climbs || []) out[i][c.discipline]++;
+  }
+  return out;
+}
+
+export function tagStats(sessions) {
+  const stats = {};
+  for (const c of allClimbs(sessions)) {
+    for (const t of climbTags(c)) {
+      const s = stats[t] ||= { tag: t, label: tagLabel(t), total: 0, sent: 0, last: c.date };
+      s.total++; if (isSent(c)) s.sent++;
+      if (c.date > s.last) s.last = c.date;
+    }
+  }
+  return Object.values(stats).map((s) => ({ ...s, rate: s.sent / s.total })).sort((a, b) => b.total - a.total);
+}
+
+export function weekStreak(sessions) {
+  if (!sessions.length) return 0;
+  const weeks = new Set(sessions.map((s) => weekStart(parseDate(s.date)).getTime()));
+  let w = weekStart(new Date());
+  if (!weeks.has(w.getTime())) w.setDate(w.getDate() - 7); // la semana actual aún puede llegar
+  let n = 0;
+  while (weeks.has(w.getTime())) { n++; w.setDate(w.getDate() - 7); }
+  return n;
+}
+
+export function openProjects(sessions, settings) {
+  const climbs = allClimbs(sessions).sort((a, b) => a.date.localeCompare(b.date));
+  const map = new Map();
+  for (const c of climbs) {
+    const key = `${c.discipline}|${c.grade}|${(c.name || '').trim().toLowerCase()}`;
+    if (!c.name?.trim()) continue;
+    if (isSent(c)) { if (map.has(key)) map.get(key).sentOn = c.date; continue; }
+    const p = map.get(key) || { ...c, sessions: 0, attemptsTotal: 0, first: c.date, sentOn: null };
+    if (p.sentOn) { p.sentOn = null; p.sessions = 0; p.attemptsTotal = 0; p.first = c.date; }
+    p.sessions++; p.attemptsTotal += c.attempts || 1; p.lastTried = c.date;
+    map.set(key, p);
+  }
+  return [...map.values()].filter((p) => !p.sentOn).map((p) => ({ ...p, label: gradeLabel(p, settings) }))
+    .sort((a, b) => b.lastTried.localeCompare(a.lastTried));
+}
+
+export function sentProjects(sessions) {
+  // Proyectos encadenados: bloques/vías con nombre que se probaron en ≥2 sesiones antes de salir.
+  const climbs = allClimbs(sessions).sort((a, b) => a.date.localeCompare(b.date));
+  const tried = new Map(); const done = [];
+  for (const c of climbs) {
+    if (!c.name?.trim()) continue;
+    const key = `${c.discipline}|${c.grade}|${c.name.trim().toLowerCase()}`;
+    if (!isSent(c)) { tried.set(key, (tried.get(key) || 0) + 1); continue; }
+    if (tried.get(key)) { done.push({ ...c, sessionsTried: tried.get(key) + 1 }); tried.delete(key); }
+  }
+  return done.reverse();
+}
+
+// ---------- Consejos ----------
+export function buildInsights(sessions, settings) {
+  const out = [];
+  if (!sessions.length) return out;
+  const sorted = sortSessions(sessions);
+  const now = today();
+  const last = sorted[0];
+  const since = daysBetween(last.date, now);
+
+  const streak = weekStreak(sessions);
+  if (streak >= 2) out.push({ icon: '🔥', tone: 'good', title: `${streak} semanas seguidas escalando`, text: 'La constancia es lo que más hace progresar. ¡No rompas la racha!' });
+
+  if (since >= 7) out.push({ icon: '🧗', tone: 'info', title: `Hace ${since} días de tu última sesión`, text: 'Tras una pausa larga, empieza un par de grados por debajo y calienta bien los dedos.' });
+  else if (since === 0 && last.rpe >= 8) out.push({ icon: '🛌', tone: 'warn', title: 'Sesión dura hoy', text: 'Esfuerzo alto: deja al menos 48 h antes de volver a apretar regletas o desplome fuerte.' });
+
+  // Carga aguda vs crónica (7 días vs media semanal de los 28 previos)
+  const loadIn = (from, to) => sessions.filter((s) => { const d = daysBetween(s.date, now); return d >= from && d < to; })
+    .reduce((a, s) => a + sessionLoad(s), 0);
+  const acute = loadIn(0, 7);
+  const chronic = loadIn(7, 35) / 4;
+  if (chronic > 0 && acute > 0) {
+    const r = acute / chronic;
+    if (r > 1.5) out.push({ icon: '⚠️', tone: 'warn', title: `Carga semanal ×${r.toFixed(1)} sobre tu media`, text: 'Subidas bruscas de carga se asocian a más lesiones (sobre todo poleas). Plantéate una sesión suave o descanso.' });
+    else if (r < 0.6 && sorted.length > 4) out.push({ icon: '🌱', tone: 'info', title: 'Semana más tranquila de lo habitual', text: 'Buen momento para recuperar… o para volver con energía a tus proyectos.' });
+  }
+
+  // Dedos
+  const recent = sessions.filter((s) => daysBetween(s.date, now) < 28);
+  const bl = bodyLoad(recent.length ? recent : sessions, settings);
+  if (bl.sum > 0) {
+    const fingers = bl.total.dedos / bl.sum;
+    if (fingers > 0.3) out.push({ icon: '🤞', tone: 'warn', title: `Los dedos se llevan el ${Math.round(fingers * 100)}% de la carga`, text: 'Mucha regleta o agujero últimamente. Calienta progresivamente y alterna con sesiones de romos, placa o volúmenes.' });
+    const [topPart] = Object.entries(bl.total).sort((a, b) => b[1] - a[1]);
+    out.push({ icon: '💪', tone: 'info', title: `Zona más trabajada: ${BODY_PARTS[topPart[0]].toLowerCase()}`, text: `En las últimas 4 semanas ${BODY_PARTS[topPart[0]].toLowerCase()} acumulan el ${Math.round(topPart[1] / bl.sum * 100)}% del esfuerzo estimado.` });
+  }
+
+  // Estilos
+  const ts = tagStats(sessions).filter((t) => t.total >= 3);
+  if (ts.length >= 2) {
+    const weakest = [...ts].sort((a, b) => a.rate - b.rate)[0];
+    const strongest = [...ts].sort((a, b) => b.rate - a.rate)[0];
+    if (strongest.rate - weakest.rate > 0.15) {
+      out.push({ icon: '🎯', tone: 'info', title: `Tu punto fuerte: ${strongest.label.toLowerCase()}`, text: `Encadenas el ${Math.round(strongest.rate * 100)}% de lo que pruebas con ${strongest.label.toLowerCase()}. En ${weakest.label.toLowerCase()} solo el ${Math.round(weakest.rate * 100)}%: ahí está tu margen de mejora.` });
+    }
+    const forgotten = ts.filter((t) => daysBetween(t.last, now) >= 14).sort((a, b) => b.total - a.total)[0];
+    if (forgotten) out.push({ icon: '🔄', tone: 'info', title: `Hace ${daysBetween(forgotten.last, now)} días sin ${forgotten.label.toLowerCase()}`, text: 'Variar estilos evita estancarse y reparte la carga entre tendones distintos.' });
+  }
+
+  // Nuevo máximo
+  const climbs = allClimbs(sessions);
+  for (const disc of ['boulder', 'route']) {
+    const sent = climbs.filter((c) => c.discipline === disc && isSent(c));
+    if (!sent.length) continue;
+    const max = Math.max(...sent.map((c) => c.grade));
+    const first = sent.filter((c) => c.grade === max).sort((a, b) => a.date.localeCompare(b.date))[0];
+    const older = sent.filter((c) => daysBetween(c.date, now) > 30);
+    if (daysBetween(first.date, now) <= 30 && older.length && Math.max(...older.map((c) => c.grade)) < max) {
+      out.push({ icon: '🏆', tone: 'good', title: `¡Nuevo máximo en ${disc === 'route' ? 'vía' : 'bloque'}: ${gradeLabel(first, settings)}!`, text: `Lo conseguiste el ${fmtDate(first.date)}. Ahora toca consolidar ese grado.` });
+    }
+  }
+
+  // Siguiente objetivo por pirámide
+  for (const disc of ['boulder', 'route']) {
+    const sent = climbs.filter((c) => c.discipline === disc && isSent(c));
+    if (sent.length < 5) continue;
+    const max = Math.max(...sent.map((c) => c.grade));
+    const atMax = sent.filter((c) => c.grade === max).length;
+    const below = sent.filter((c) => c.grade === max - 1).length;
+    const label = (g) => gradeLabel({ discipline: disc, grade: g }, settings);
+    if (atMax >= 3 && below >= 5) out.push({ icon: '🚀', tone: 'good', title: `Pirámide sólida: prueba ${label(max + 1)}`, text: `Ya tienes ${atMax} en ${label(max)} y ${below} en ${label(max - 1)}. Estás lista para proyectar el siguiente nivel.` });
+    else if (max > 0) out.push({ icon: '🧱', tone: 'info', title: `Consolidar ${label(max)}`, text: `Llevas ${atMax} en ${label(max)}${max > 0 ? ` y ${below} en ${label(max - 1)}` : ''}. Una pirámide típica pide ~3 y ~6 antes de saltar de grado.` });
+  }
+
+  const flashes = climbs.filter((c) => c.result === 'flash' || c.result === 'onsight').length;
+  if (climbs.length >= 15) {
+    const fr = flashes / climbs.length;
+    if (fr > 0.6) out.push({ icon: '⚡', tone: 'info', title: `Flasheas el ${Math.round(fr * 100)}%`, text: 'Quizá estés escalando en tu zona de confort. Mete algún bloque que te cueste 5+ intentos.' });
+  }
+
+  const proj = openProjects(sessions, settings);
+  if (proj.length) out.push({ icon: '📌', tone: 'info', title: `${proj.length} proyecto${proj.length > 1 ? 's' : ''} abierto${proj.length > 1 ? 's' : ''}`, text: proj.slice(0, 3).map((p) => `${p.name} (${p.label})`).join(', ') });
+
+  // Mejor día
+  if (sessions.length >= 8) {
+    const days = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+    const by = {};
+    for (const s of sessions) {
+      const d = parseDate(s.date).getDay();
+      const b = by[d] ||= { n: 0, sent: 0, tot: 0 };
+      b.n++; b.tot += (s.climbs || []).length; b.sent += (s.climbs || []).filter(isSent).length;
+    }
+    const best = Object.entries(by).filter(([, b]) => b.n >= 2 && b.tot).sort((a, b) => b[1].sent / b[1].tot - a[1].sent / a[1].tot)[0];
+    if (best) out.push({ icon: '📅', tone: 'info', title: `Los ${days[best[0]]} rindes mejor`, text: `Encadenas el ${Math.round(best[1].sent / best[1].tot * 100)}% de lo que pruebas. Buen día para ir a por proyectos.` });
+  }
+
+  return out;
+}
+
+// ---------- Logros ----------
+export function achievements(sessions, photos) {
+  const climbs = allClimbs(sessions);
+  const sent = climbs.filter(isSent);
+  const months = {};
+  sessions.forEach((s) => { months[s.date.slice(0, 7)] = (months[s.date.slice(0, 7)] || 0) + 1; });
+  const tags = new Set(sent.flatMap(climbTags));
+  const list = [
+    ['🎒', 'Primera sesión', 'Registra tu primera sesión', sessions.length >= 1],
+    ['🔟', 'Diez sesiones', '10 sesiones registradas', sessions.length >= 10],
+    ['💯', 'Cien escaladas', '100 bloques o vías encadenados', sent.length >= 100],
+    ['⚡', 'Primer flash', 'Encadena algo a la primera', climbs.some((c) => c.result === 'flash')],
+    ['👁', 'A vista', 'Encadena una vía a vista', climbs.some((c) => c.result === 'onsight')],
+    ['🪢', 'Cuerdista', 'Primera vía de primera', sent.some((c) => c.discipline === 'route' && c.ropeMode === 'lead')],
+    ['🦇', 'Murciélago', 'Encadena un techo', tags.has('techo')],
+    ['🦶', 'Pies de seda', '10 placas encadenadas', sent.filter((c) => (c.styles || []).includes('placa')).length >= 10],
+    ['🔥', 'Racha de 4', '4 semanas seguidas escalando', weekStreak(sessions) >= 4],
+    ['📆', 'Mes intenso', '8 sesiones en un mes', Object.values(months).some((n) => n >= 8)],
+    ['📌', 'Proyectista', 'Encadena un proyecto de varias sesiones', sentProjects(sessions).length >= 1],
+    ['🧩', 'Todoterreno', 'Encadena 4 inclinaciones distintas', ['placa', 'vertical', 'desplome', 'techo'].every((t) => tags.has(t))],
+    ['📸', 'Fotógrafa', 'Sube 5 fotos', (photos || 0) >= 5],
+    ['🏔', 'Maratón', 'Una sesión de 3 h o más', sessions.some((s) => s.duration >= 180)],
+  ];
+  return list.map(([icon, title, desc, done]) => ({ icon, title, desc, done }));
+}
+
+export function fmtDate(iso, opts = { day: 'numeric', month: 'short' }) {
+  return parseDate(iso).toLocaleDateString('es-ES', opts);
+}
+
+export { RESULTS, TAGS };
