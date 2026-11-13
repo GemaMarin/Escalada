@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Cuaderno de Escalada</title>
+  <meta name="description" content="Registra tus sesiones de escalada en el rocódromo: bloques, vías, fotos, progreso y carga corporal.">
+  <meta name="theme-color" content="#ff6b35">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Escalada">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="appbar">
+    <a href="#/inicio" class="brand"><img src="icons/icon.svg" alt="" width="28" height="28"> <span>Cuaderno de Escalada</span></a>
+    <a href="#/ajustes" class="icon-btn" aria-label="Ajustes">⚙︎</a>
+  </header>
+  <main id="view" class="view"><p class="muted center">Cargando…</p></main>
+  <nav class="tabbar" aria-label="Navegación principal">
+    <a href="#/inicio" data-tab="inicio"><span>🏠</span>Inicio</a>
+    <a href="#/historial" data-tab="historial"><span>📒</span>Historial</a>
+    <a href="#/nueva" data-tab="nueva" class="fab" aria-label="Nueva sesión"><span>＋</span></a>
+    <a href="#/progreso" data-tab="progreso"><span>📈</span>Progreso</a>
+    <a href="#/cuerpo" data-tab="cuerpo"><span>💪</span>Cuerpo</a>
+  </nav>
+  <dialog id="sheet" class="sheet-dialog"></dialog>
+  <dialog id="lightbox" class="lightbox"></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <noscript>Esta app necesita JavaScript activado.</noscript>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
