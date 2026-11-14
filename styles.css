@@ -113,6 +113,17 @@ body[data-route="nueva"] .tabbar .fab span { transform: rotate(45deg); }
 ::view-transition-old(root) { animation: fade-out .14s ease-in both; }
 ::view-transition-new(root) { animation: fade-in .26s var(--ease) both; }
 body.ready .view { animation: fade-in .35s var(--ease); }
+/* Entrada escalonada al cambiar de pantalla */
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } }
+@keyframes ring-in { from { stroke-dashoffset: var(--len); } }
+@keyframes grow { from { transform: scaleX(0); } }
+@keyframes bump { 40% { transform: scale(1.45); } }
+.view.enter > * { animation: rise .5s var(--ease) both; animation-delay: calc(var(--i, 0) * 45ms); }
+.view.enter .ring-fg { animation: ring-in 1.2s var(--ease) .15s both; }
+.view.enter .bar i, .view.enter .cbar-track i { transform-origin: left; animation: grow .9s var(--ease) .2s both; }
+.view.enter .chart rect { transform-box: fill-box; transform-origin: bottom; animation: rise-bar .8s var(--ease) both; }
+@keyframes rise-bar { from { transform: scaleY(0); } }
+.ctr b.bump { animation: bump .3s var(--ease); }
 
 /* ============ Tipografía ============ */
 .page-title { font-size: 32px; font-weight: 800; letter-spacing: -.03em; }
@@ -660,6 +671,12 @@ details.card[open] > summary { margin-bottom: 10px; }
 :root[data-theme="dark"] .nc { background: rgb(0 0 0 / .2); }
 :root[data-theme="dark"] .tip { background: #0f2230; border-color: #173a52; }
 :root[data-theme="dark"] .tip-cat { color: #7dd3fc; }
+
+/* Compartir y borrar */
+.share-btn { background: linear-gradient(135deg, #fff7ed, #fff); border-color: #fed7aa; color: var(--accent); }
+.share-preview { width: 100%; border-radius: 18px; box-shadow: var(--shadow); }
+.forget { justify-self: center; }
+.backup > .ic { color: var(--accent-2) !important; }
 
 /* ============ Esqueletos ============ */
 .skeleton-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
