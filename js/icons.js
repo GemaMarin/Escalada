@@ -4,6 +4,8 @@ const P = {
   book: '<path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H20v15H5.5A1.5 1.5 0 0 0 4 19.5z"/><path d="M4 19.5A1.5 1.5 0 0 0 5.5 21H20"/><path d="M8 7h8M8 11h6"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   minus: '<path d="M5 12h14"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  ticket: '<path d="M3 8a2 2 0 0 0 2-2h14a2 2 0 0 0 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 0-2 2H5a2 2 0 0 0-2-2v-2a2 2 0 0 0 0-4z"/><path d="M14 6v12" stroke-dasharray="2 2"/>',
   wall: '<path d="M4 21V5l8-2 8 2v16"/><circle cx="9" cy="8" r="1.2"/><circle cx="15" cy="10" r="1.2"/><circle cx="10" cy="13.5" r="1.2"/><circle cx="14.5" cy="16.5" r="1.2"/>',
   chart: '<path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 6-7"/>',
   body: '<circle cx="12" cy="4.5" r="2"/><path d="M5 8.5 12 9l7-.5M12 9v6m0 0-3 6m3-6 3 6"/>',
