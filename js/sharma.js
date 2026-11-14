@@ -43,8 +43,6 @@ export const SHARMA_CIRCUITS = [
 
 const BASE = 'https://gyms.vertical-life.info';
 const IFRAME = `${BASE}/${GYM.id}/iframe`;
-const DETAIL = (kind, id) => `${BASE}/en/${GYM.id}/iframe/${id}/iframe_${kind}_detail`;
-const SECTOR = (id) => `${BASE}/en/${GYM.id}/iframe/${id}/iframe_sector_zlaggables`;
 const MAX_AGE = 3 * 3600 * 1000;
 
 // Nombres de color de presa (Vertical-Life los da en inglés).
@@ -86,96 +84,77 @@ export function parseGym(html) {
 }
 
 let memo = null;
+let extras = null;
 
-// Devuelve los datos de la sala: caché local → red → instantánea incluida en la app.
+// Planos de sector y zonas de cada bloque: los prepara GitHub cada día (scripts/update-sharma.mjs)
+// y se publican junto a la app, así cargan al instante.
+async function loadExtras() {
+  if (extras) return extras;
+  try {
+    const res = await fetch('data/sharma.json');
+    if (!res.ok) throw new Error(res.status);
+    extras = await res.json();
+    db.put('settings', { key: 'gym-extras', value: extras });
+  } catch {
+    extras = (await db.get('settings', 'gym-extras'))?.value || { sectors: {}, topos: {}, boulders: [], routes: [], fetchedAt: 0 };
+  }
+  return extras;
+}
+
+// Devuelve los datos de la sala: caché local → lista en directo → copia publicada con la app.
 export async function getGym({ force = false } = {}) {
+  const ex = await loadExtras();
   if (!memo) memo = (await db.get('settings', 'gym-cache'))?.value || null;
   const fresh = memo && Date.now() - memo.fetchedAt < MAX_AGE;
   if (!force && fresh) return memo;
   try {
-    const res = await fetch(IFRAME, { cache: 'no-store' });
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    const res = await fetch(IFRAME, { cache: 'no-store', signal: ctrl.signal });
+    clearTimeout(timer);
     if (!res.ok) throw new Error(res.status);
     const data = parseGym(await res.text());
     if (!data.boulders.length && !data.routes.length) throw new Error('vacío');
     memo = data;
     await db.put('settings', { key: 'gym-cache', value: data });
     return data;
-  } catch (e) {
+  } catch {
     if (memo) return { ...memo, offline: true };
-    try {
-      const snap = await (await fetch('data/sharma-snapshot.json')).json();
-      return { ...snap, offline: true, snapshot: true };
-    } catch { return { boulders: [], routes: [], fetchedAt: 0, offline: true }; }
+    if (ex.boulders?.length) return { boulders: ex.boulders, routes: ex.routes, fetchedAt: ex.fetchedAt, offline: true };
+    return { boulders: [], routes: [], fetchedAt: 0, offline: true };
   }
 }
 
 export const cachedGym = () => memo;
 
-// Las respuestas de detalle son JavaScript que inyecta HTML: lo extraemos y leemos los atributos.
-function unwrapJS(text) {
-  const m = text.match(/\.html\("([\s\S]*)"\);?\s*$/);
-  const raw = m ? m[1] : text;
-  return raw.replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\'/g, "'").replace(/\\\//g, '/').replace(/\\\\/g, '\\');
-}
-
-function topoFrom(el) {
-  if (!el) return null;
-  try {
-    return {
-      src: el.getAttribute('data-image-src'),
-      path: JSON.parse(el.getAttribute('data-path') || '[]').map((pt) => pt.map(Number).slice(0, 2)).filter((pt) => pt.every(Number.isFinite)),
-      color: el.getAttribute('data-color') || null,
-    };
-  } catch { return null; }
-}
-
-const detailCache = new Map();
-async function fetchFragment(url) {
-  if (detailCache.has(url)) return detailCache.get(url);
-  const p = (async () => {
-    const stored = (await db.get('settings', `vl:${url}`))?.value;
-    if (stored && Date.now() - stored.at < 7 * 86400000) return stored.html;
-    const res = await fetch(url, { headers: { Accept: 'text/javascript', 'X-Requested-With': 'XMLHttpRequest' } });
-    if (!res.ok) throw new Error(res.status);
-    const html = unwrapJS(await res.text());
-    db.put('settings', { key: `vl:${url}`, value: { html, at: Date.now() } });
-    return html;
-  })();
-  detailCache.set(url, p);
-  p.catch(() => detailCache.delete(url));
-  return p;
-}
-
 export async function getDetail(item) {
-  const html = await fetchFragment(DETAIL(item.kind, item.vlId));
-  const doc = new DOMParser().parseFromString(html, 'text/html');
-  const text = doc.body.textContent.replace(/\s+/g, ' ');
-  const expires = text.match(/EXPIRATION DATE:\s*([\d.]+)/)?.[1] || null;
+  const ex = await loadExtras();
+  const t = ex.topos?.[item.vlId];
   return {
-    wall: topoFrom(doc.querySelector('.zlaggable-topo')),
-    map: topoFrom(doc.querySelector('.zlaggable-topo-wall')),
-    stars: doc.querySelectorAll('.zlaggable-stars img.star').length,
-    expires,
+    wall: t?.wall || null,
+    map: ex.sectors?.[item.sectorId]?.map || null,
+    stars: Math.min(5, t?.stars || 0),
+    expires: t?.expires || null,
+    missing: !t,
   };
 }
 
 export async function getSector(sectorId) {
-  const html = await fetchFragment(SECTOR(sectorId));
-  const doc = new DOMParser().parseFromString(html, 'text/html');
-  return topoFrom(doc.querySelector('.zlaggable-topo-wall'));
+  const ex = await loadExtras();
+  return ex.sectors?.[sectorId]?.map || null;
 }
 
 // Dibuja una foto con una zona resaltada (coordenadas en píxeles de la imagen original).
-export function topoHTML(topo, color, { cls = '', label = '' } = {}) {
+export function topoHTML(topo, color, { cls = '', label = '', line = false } = {}) {
   const src = safeURL(topo?.src);
   if (!src) return '';
   const id = `t${Math.random().toString(36).slice(2, 8)}`;
-  const pts = topo.path.map(([x, y]) => `${x},${y}`).join(' ');
+  const pts = topo.path.map(([x, y]) => `${Number(x)},${Number(y)}`).join(' ');
   return `<figure class="topo ${cls}" id="${id}">
     <div class="topo-inner"><img src="${src}" alt="" loading="lazy"
       onload="const s=this.nextElementSibling;s.setAttribute('viewBox','0 0 '+this.naturalWidth+' '+this.naturalHeight);s.style.display='block';this.parentNode.classList.add('ready')"
       onerror="this.closest('figure').classList.add('broken')">
-    <svg preserveAspectRatio="none" style="display:none"><polygon points="${pts}" style="--zc:${safeColor(color || topo.color)}"/></svg></div>
+    <svg preserveAspectRatio="none" style="display:none">${line || topo.path.length < 3 ? `<polyline points="${pts}" style="--zc:${safeColor(color || topo.color)}"/>` : `<polygon points="${pts}" style="--zc:${safeColor(color || topo.color)}"/>`}</svg></div>
     ${label ? `<figcaption>${esc(label)}</figcaption>` : ''}
   </figure>`;
 }

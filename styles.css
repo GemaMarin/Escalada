@@ -23,7 +23,7 @@
   --heat: #ff4d1f;
   --body-base: #e6ddd3;
   --shadow-sm: 0 1px 2px rgb(45 25 10 / .06);
-  --shadow: 0 1px 2px rgb(45 25 10 / .05), 0 8px 24px -8px rgb(45 25 10 / .12);
+  --shadow: 0 1px 2px rgb(45 25 10 / .04), 0 4px 14px -6px rgb(45 25 10 / .08);
   --shadow-lg: 0 20px 50px -12px rgb(45 25 10 / .3);
   --radius: 20px;
   --radius-sm: 14px;
@@ -389,16 +389,19 @@ input[type=range] { width: 100%; accent-color: var(--accent); height: 28px; }
 /* ============ Sala ============ */
 .gym-hero { padding: 4px 0 2px; }
 .gym-hero h1 { font-size: 30px; font-weight: 800; letter-spacing: -.03em; margin-bottom: 8px; }
-.gym-addr { display: flex; align-items: center; gap: 8px; margin: 3px 0; color: var(--muted); font-size: 14px; }
+.gym-addr { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 6px 0 0; color: var(--muted); font-size: 14px; }
+.gym-addr a { font-weight: 600; }
 .gym-addr .ic { width: 16px; height: 16px; color: var(--accent); }
 .gym-links { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
 .search { position: relative; }
 .search .ic { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--muted); width: 19px; height: 19px; pointer-events: none; }
 .search input { padding-left: 44px !important; border-radius: 16px !important; }
-.circuits { display: grid; gap: 8px; }
-.circ { display: grid; grid-template-columns: 92px 1fr 46px; gap: 10px; align-items: center; padding: 4px; border: 0; background: none; border-radius: 10px; cursor: pointer; text-align: left; }
-.circ.on { background: var(--surface-2); }
-.circ small { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+.circuits { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.circ { display: grid; grid-template-columns: 1fr auto; gap: 6px 4px; align-items: center; padding: 8px; border: 1px solid transparent; background: var(--surface-2); border-radius: 12px; cursor: pointer; text-align: left; min-width: 0; }
+.circ .grade { font-size: 11.5px; padding: 0 7px; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; justify-self: start; }
+.circ .bar { grid-column: 1 / -1; grid-row: 2; height: 6px; }
+.circ small { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.circ.on { border-color: var(--text); background: var(--surface); }
 .gym-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 10px; }
 @media (min-width: 560px) { .gym-grid { grid-template-columns: repeat(3, 1fr); } }
 .gym-item {
@@ -422,6 +425,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); height: 28px; }
 .topo img { width: 100%; height: auto; }
 .topo svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .topo polygon { fill: color-mix(in srgb, var(--zc, var(--accent)) 30%, transparent); stroke: var(--zc, var(--accent)); stroke-width: 6; stroke-linejoin: round; vector-effect: non-scaling-stroke; animation: zone 1.8s ease-in-out infinite; }
+.topo polyline { fill: none; stroke: var(--zc, var(--accent)); stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; filter: drop-shadow(0 0 3px rgb(0 0 0 / .6)); }
 .topo.map polygon { --zc: #ffffff; fill: rgb(255 255 255 / .12); stroke-width: 2; animation: none; cursor: pointer; transition: fill .2s; }
 .topo.map polygon.on, .topo.map polygon:hover { --zc: var(--accent); fill: color-mix(in srgb, var(--accent) 40%, transparent); stroke-width: 3; }
 .topo.small .topo-inner { max-height: 220px; }
@@ -444,6 +448,42 @@ input[type=range] { width: 100%; accent-color: var(--accent); height: 28px; }
 .btn.log.flash { background: var(--warn); }
 .btn.log.send { background: var(--good); }
 .btn.log.proj { background: var(--surface-3); color: var(--text); }
+
+/* ============ Plan / recordatorios ============ */
+.plan { display: grid; gap: 14px; border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
+.plan.warn-card { background: color-mix(in srgb, var(--accent) 6%, var(--surface)); }
+.plan-head { display: flex; gap: 12px; align-items: center; }
+.plan-head > div { display: grid; }
+.plan-head b { font-size: 17px; }
+.plan-head small { color: var(--muted); font-size: 14px; }
+.plan-ic { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 14px; background: var(--accent-soft); color: var(--accent); flex: none; }
+.plan-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.btn.primary.alt { background: var(--accent-2); border-color: var(--accent-2); box-shadow: 0 8px 20px -10px var(--accent-2); }
+.muted-link { color: var(--muted); justify-self: center; font-weight: 600; font-size: 14px; padding: 0; }
+.next-line { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 15px; cursor: pointer; text-align: left; }
+.next-line > span { flex: 1; }
+.next-line .ic { width: 20px; height: 20px; color: var(--accent); }
+.next-line .ic:last-child { color: var(--muted); width: 16px; height: 16px; }
+.weekdays { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.wd { aspect-ratio: 1; max-height: 48px; border-radius: 14px; border: 1px solid var(--border); background: var(--surface); font-weight: 700; cursor: pointer; }
+.wd.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.chip-x { display: inline-grid; place-items: center; width: 18px; height: 18px; margin-right: -6px; border: 0; border-radius: 50%; background: rgb(255 255 255 / .2); color: inherit; cursor: pointer; padding: 0; }
+.chip-x .ic { width: 12px; height: 12px; }
+label.chip { position: relative; overflow: hidden; }
+.hidden-date { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+input[type=time] { width: auto !important; min-width: 110px; text-align: center; }
+.more { display: inline-flex; align-items: center; gap: 2px; font-weight: 650; font-size: 14px; }
+.more .ic { width: 16px; height: 16px; }
+.onb-sub { margin: -4px 0 0; color: var(--muted); font-size: 17px; }
+
+/* ============ Filtros de la sala ============ */
+.filter-bar { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; }
+.select { position: relative; display: flex; align-items: center; }
+.select .ic { position: absolute; left: 12px; width: 16px; height: 16px; color: var(--accent); pointer-events: none; }
+.select select { width: 100%; appearance: none; -webkit-appearance: none; padding: 11px 28px 11px 34px; border-radius: 13px; border: 1px solid var(--border); background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='3'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 10px center; font-size: 14px; font-weight: 600; min-width: 0; text-overflow: ellipsis; }
+.icon-btn.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+.filters-note { margin: 0; font-size: 14px; color: var(--muted); }
+.btn.confirm { background: var(--danger); color: #fff; border-color: var(--danger); }
 
 /* ============ Esqueletos ============ */
 .skeleton-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }

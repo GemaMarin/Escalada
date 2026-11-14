@@ -1,8 +1,8 @@
 // Service worker: permite usar la app sin conexión (p. ej. en el rocódromo sin cobertura).
-const CACHE = 'escalada-v2';
+const CACHE = 'escalada-v3';
 const ASSETS = ['./', './index.html', './styles.css', './manifest.webmanifest', './icons/icon.svg', './icons/icon-192.png',
-  './js/app.js', './js/db.js', './js/model.js', './js/insights.js', './js/charts.js', './js/demo.js', './js/sharma.js', './js/icons.js',
-  './data/sharma-snapshot.json'];
+  './js/app.js', './js/db.js', './js/model.js', './js/insights.js', './js/charts.js', './js/demo.js', './js/sharma.js', './js/icons.js', './js/schedule.js',
+  './data/sharma.json'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));

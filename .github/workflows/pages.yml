@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  schedule:
+    # Cada mañana y los jueves antes de la clase: actualiza bloques, vías y planos de la sala.
+    - cron: '17 5 * * *'
+    - cron: '43 15 * * 4'
 
 permissions:
   contents: read
@@ -22,6 +26,12 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Actualizar datos de la sala (Vertical-Life)
+        run: node scripts/update-sharma.mjs
+        continue-on-error: true
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
