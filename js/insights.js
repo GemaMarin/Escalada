@@ -242,27 +242,65 @@ export function buildInsights(sessions, settings) {
   return out;
 }
 
-// ---------- Logros ----------
-export function achievements(sessions, photos) {
+// ---------- Logros por niveles ----------
+// Cada familia tiene niveles: al completar uno aparece el siguiente.
+function maxStreakEver(sessions) {
+  const weeks = [...new Set(sessions.map((s) => weekStart(parseDate(s.date)).getTime()))].sort((a, b) => a - b);
+  let best = 0; let run = 0; let prev = null;
+  for (const w of weeks) { run = prev != null && Math.round((w - prev) / (7 * 86400000)) === 1 ? run + 1 : 1; best = Math.max(best, run); prev = w; }
+  return best;
+}
+
+export function achievements(sessions, photos, extra = {}) {
   const climbs = allClimbs(sessions);
   const sent = climbs.filter(isSent);
   const months = {};
   sessions.forEach((s) => { months[s.date.slice(0, 7)] = (months[s.date.slice(0, 7)] || 0) + 1; });
-  const list = [
-    ['🎒', 'Primera sesión', 'Registra tu primera sesión', sessions.length >= 1],
-    ['🔟', 'Diez sesiones', '10 sesiones registradas', sessions.length >= 10],
-    ['💯', 'Cien', '100 bloques o vías conseguidos', sent.length >= 100],
-    ['⚡', 'A la primera', 'Consigue un bloque al primer intento', climbs.some((c) => c.result === 'flash' || c.result === 'onsight')],
-    ['🪢', 'Cuerdista', 'Consigue tu primera vía', sent.some((c) => c.discipline === 'route')],
-    ['🌈', 'Arcoíris', 'Consigue bloques de 4 colores distintos', new Set(sent.filter((c) => c.discipline === 'boulder').map((c) => c.grade)).size >= 4],
-    ['🎯', 'Constante', '5 sesiones registradas', sessions.length >= 5],
-    ['🔥', 'Racha de 4', '4 semanas seguidas escalando', weekStreak(sessions) >= 4],
-    ['📆', 'Mes intenso', '6 sesiones en un mes', Object.values(months).some((n) => n >= 6)],
-    ['💪', 'Persistente', 'Consigue un bloque que habías intentado otro día', sentProjects(sessions).length >= 1],
-    ['📸', 'Fotógrafa', 'Sube 5 fotos', (photos || 0) >= 5],
-    ['🏔', 'Maratón', 'Una sesión de 3 h o más', sessions.some((s) => s.duration >= 180)],
+  const scale = extra.scale || [];
+  const bSent = sent.filter((c) => c.discipline === 'boulder').map((c) => c.grade);
+  const rSent = sent.filter((c) => c.discipline === 'route').map((c) => c.grade);
+  const colorTiers = scale.map((g, i) => ({ ...g, i })).filter((g) => !g.joker);
+  const routeTiers = ['5a', '5c', '6a', '6b', '6c', '7a', '7b', '7c', '8a'].map((g) => ROUTE_GRADES.indexOf(g));
+  const maxB = bSent.length ? Math.max(...bSent) : -1;
+  const maxR = rSent.length ? Math.max(...rSent) : -1;
+  const families = [
+    { key: 'sesiones', icon: '🎒', title: 'Constancia', value: sessions.length, tiers: [1, 5, 10, 25, 50, 100, 200], unit: (n) => `${n} ${n === 1 ? 'sesión' : 'sesiones'}` },
+    { key: 'conseguidos', icon: '✅', title: 'Conseguidos', value: sent.length, tiers: [5, 25, 50, 100, 250, 500, 1000], unit: (n) => `${n} bloques o vías` },
+    { key: 'flash', icon: '⚡', title: 'A la primera', value: climbs.filter((c) => c.result === 'flash' || c.result === 'onsight').length, tiers: [1, 10, 25, 50, 100, 250], unit: (n) => `${n} a la primera` },
+    { key: 'racha', icon: '🔥', title: 'Racha', value: maxStreakEver(sessions), tiers: [2, 4, 8, 12, 26, 52], unit: (n) => `${n} semanas seguidas` },
+    { key: 'mes', icon: '📆', title: 'Mes intenso', value: Math.max(0, ...Object.values(months)), tiers: [4, 6, 8, 12], unit: (n) => `${n} sesiones en un mes` },
   ];
-  return list.map(([icon, title, desc, done]) => ({ icon, title, desc, done }));
+  if (colorTiers.length) {
+    const reached = colorTiers.filter((t) => maxB >= t.i).length;
+    families.push({ key: 'colores', icon: '🌈', title: 'Colores', value: reached, tiers: colorTiers.map((_, k) => k + 1), unit: (n) => `Consigue un ${colorTiers[n - 1]?.name || ''}`, doneUnit: (n) => `Primer ${colorTiers[n - 1]?.name || ''}` });
+  }
+  if (rSent.length) {
+    const reached = routeTiers.filter((t) => maxR >= t).length;
+    families.push({ key: 'vias', icon: '🪢', title: 'Grado en vía', value: reached, tiers: routeTiers.map((_, k) => k + 1), unit: (n) => `Consigue un ${ROUTE_GRADES[routeTiers[n - 1]]}`, doneUnit: (n) => `Primer ${ROUTE_GRADES[routeTiers[n - 1]]}` });
+  }
+  families.push(
+    { key: 'sala', icon: '🧱', title: 'Bloques de la sala', value: new Set(sent.filter((c) => c.vlId).map((c) => c.vlId)).size, tiers: [1, 5, 15, 30, 60, 100], unit: (n) => `${n} ${n === 1 ? 'bloque concreto' : 'bloques concretos'} de la sala` },
+    { key: 'circuito', icon: '🏆', title: 'Color completo', value: extra.completeCircuits || 0, tiers: [1, 2, 3, 4], unit: (n) => `Completa ${n === 1 ? 'un color entero' : `${n} colores enteros`} de la sala`, doneUnit: (n) => `${n === 1 ? 'Un color entero' : `${n} colores enteros`} de la sala` },
+    { key: 'persistente', icon: '💪', title: 'Persistente', value: sentProjects(sessions).length, tiers: [1, 5, 10, 25], unit: (n) => `Consigue ${n === 1 ? 'un bloque' : `${n} bloques`} que habías intentado otro día`, doneUnit: (n) => `${n} ${n === 1 ? 'bloque que se te resistía' : 'bloques que se te resistían'}` },
+    { key: 'amigas', icon: '👯', title: 'En compañía', value: sessions.filter((s) => (s.with || []).length).length, tiers: [1, 5, 10, 25], unit: (n) => `${n} ${n === 1 ? 'sesión' : 'sesiones'} con amigas` },
+    { key: 'fotos', icon: '📸', title: 'Fotógrafa', value: photos || 0, tiers: [1, 5, 20, 50], unit: (n) => `${n} ${n === 1 ? 'foto' : 'fotos'}` },
+  );
+  return families.map((f) => {
+    const level = f.tiers.filter((t) => f.value >= t).length;
+    const next = f.tiers[level];
+    const prev = level ? f.tiers[level - 1] : 0;
+    return {
+      ...f, level, max: f.tiers.length, complete: level === f.tiers.length,
+      goal: next != null ? f.unit(next) : '¡Todo completado!',
+      done: level ? (f.doneUnit || f.unit)(f.tiers[level - 1]) : null,
+      progress: next != null ? Math.min(1, (f.value - prev) / (next - prev)) : 1,
+    };
+  });
+}
+
+// Claves de los niveles conseguidos («sesiones:3»), para detectar logros nuevos.
+export function unlockedKeys(list) {
+  return list.flatMap((a) => Array.from({ length: a.level }, (_, k) => `${a.key}:${k + 1}`));
 }
 
 export function fmtDate(iso, opts = { day: 'numeric', month: 'short' }) {
