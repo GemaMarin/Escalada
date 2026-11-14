@@ -5,6 +5,8 @@ Funciona en el móvil, se puede instalar en la pantalla de inicio y funciona sin
 
 ## Qué hace
 
+**Novedad v2 — Sala en directo (Sharma Climbing Madrid):** la pestaña *Sala* muestra los bloques y vías montados ahora mismo (sector, circuito, color de presa, número, fecha de apertura, novedades), con el plano de sectores y la foto del muro con la zona de cada bloque. Se registran con un toque (Flash / Encadenado / Proyecto) y la app enseña cuánto llevas de cada circuito (p. ej. «Verde 18/24»). Los datos vienen del widget público de Vertical-Life que enlaza la web de la sala; si no hay conexión se usa la última copia guardada.
+
 - **Sesiones**: fecha, tipo (bloque, vías, mixta, entreno), duración, esfuerzo percibido (RPE), cómo te has sentido y notas.
 - **Bloques y vías**: color del circuito o grado francés, resultado (flash, a vista, encadenado, proyecto), intentos, modalidad (primera / polea / autobelay), inclinación, tipo de presas, movimientos, nombre, zona y beta.
 - **Registro rápido**: toca un color y queda apuntado, ideal entre pegue y pegue.
@@ -12,6 +14,7 @@ Funciona en el móvil, se puede instalar en la pantalla de inicio y funciona sin
 - **Progreso**: evolución de grado semanal, pirámide de grados, volumen, calendario, estilos fuertes y débiles, proyectos abiertos y encadenados.
 - **Tu cuerpo**: mapa corporal con las zonas más trabajadas (dedos, antebrazos, hombros, core…) y consejos de compensación.
 - **Consejos automáticos**: racha, cargas altas (riesgo de lesión), estilos olvidados, nuevo máximo, siguiente grado a probar…
+- **Bienvenida**, objetivo semanal con anillo de progreso, **cronómetro** de sesión y aviso para instalarla.
 - **Logros** desbloqueables y **compartir** el resumen de una sesión.
 - **Copia de seguridad** (descargar/restaurar, fotos incluidas) y **datos de ejemplo** para probarla.
 
@@ -22,7 +25,7 @@ Cada persona que abra el enlace tiene su propio cuaderno, privado. Para cambiar 
 
 ## Escala de bloque
 
-Los colores por defecto son orientativos. Los rocódromos cambian los circuitos al reequipar, así que en **Ajustes → Escala de bloque** se pueden editar nombre, color y grado aproximado de cada nivel, o cambiar a grados Font (6A, 6B…).
+Por defecto se usan los circuitos de Sharma Climbing Madrid tal y como los publica la sala (Blanco, Azul, Verde, Joker 1, Amarillo, Joker 2, Rojo, Morado, Negro). En **Ajustes → Circuitos de bloque** se pueden editar nombre, color y grado aproximado de cada nivel, o cambiar a grados Font (6A, 6B…).
 
 ## Publicarla (GitHub Pages, gratis)
 
@@ -51,7 +54,12 @@ js/insights.js      estadísticas, consejos y logros
 js/charts.js        gráficos SVG y mapa corporal
 js/db.js            almacenamiento local (IndexedDB) y fotos
 js/demo.js          datos de ejemplo
+js/sharma.js        datos de la sala (Vertical-Life) y plano/topos
+js/icons.js         iconos SVG
+data/               copia de la sala para usar sin conexión
 sw.js               uso sin conexión
 ```
 
 El mapa corporal es una **estimación orientativa** basada en el grado, los intentos y las etiquetas de cada escalada; no es una medida fisiológica. La carga de sesión usa el método sRPE (minutos × RPE).
+
+> App no oficial, sin relación con Sharma Climbing ni con Vertical-Life.
