@@ -6,10 +6,12 @@ import * as S from './sharma.js';
 import { icon } from './icons.js';
 import { makeDemo } from './demo.js';
 import * as P from './schedule.js';
+import * as N from './notes.js';
+import { tipOfDay } from './tips.js';
 
-const DATA_VERSION = 3;
+const DATA_VERSION = 4;
 const DEFAULT_SETTINGS = {
-  key: 'settings', name: '', gym: S.GYM.name, weeklyGoal: 1,
+  key: 'settings', name: 'Laura', gym: S.GYM.name, weeklyGoal: 1, theme: 'light',
   boulderScale: M.DEFAULT_BOULDER_SCALE, scalePreset: 'sharma', dataVersion: DATA_VERSION, liveGym: true,
   schedule: { days: [4], time: '19:00' }, extraDates: [], skipped: [],
 };
@@ -20,7 +22,7 @@ const state = {
   ui: {
     histTab: 'sessions', progTab: 'resumen', progDisc: 'boulder', bodyRange: '28',
     gymDisc: 'boulder', gymSector: 'all', gymCircuit: 'all', gymFilter: 'all', gymMap: false, onb: 0,
-    logDisc: 'boulder', logCircuit: null, logSector: 'all', logMore: false,
+    logDisc: 'boulder', logCircuit: null, logSector: 'all', logOpen: false, routeRows: [], tip: 0,
   },
 };
 
@@ -60,6 +62,11 @@ async function init() {
   if ((stored.dataVersion || 1) < 3 && settings) {
     if (!stored.weeklyGoal || stored.weeklyGoal === 3) state.settings.weeklyGoal = 1;
   }
+  // v4: tema claro por defecto y nombre de Laura si no había ninguno.
+  if ((stored.dataVersion || 1) < 4 && settings) {
+    if (!stored.theme) state.settings.theme = 'light';
+    if (!stored.name) state.settings.name = 'Laura';
+  }
   state.settings.dataVersion = DATA_VERSION;
   if (!state.settings.planSince) {
     const d = new Date(); d.setDate(d.getDate() - 7);
@@ -85,9 +92,9 @@ async function init() {
 }
 
 function applyTheme() {
-  const t = state.settings.theme;
-  if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
-  else delete document.documentElement.dataset.theme;
+  const t = state.settings.theme || 'light';
+  if (t === 'auto') delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = t;
 }
 
 async function loadGym(force = false) {
@@ -219,6 +226,7 @@ function photoURL(id) {
 
 const sessionPhotos = (sid) => [...state.photos.values()].filter((p) => p.sessionId === sid).sort((a, b) => a.createdAt - b.createdAt);
 const TYPE_LABEL = { boulder: 'Bloque', route: 'Vías', mixed: 'Bloque y vías', training: 'Entreno' };
+const titleOf = (s) => `${s.kind === 'free' ? 'Sesión libre' : s.kind === 'class' ? 'Clase' : 'Sesión'} · ${(TYPE_LABEL[s.type] || 'escalada').toLowerCase()}`;
 const fmtMin = (m) => (m >= 60 ? `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60}` : ''}` : `${m} min`);
 const ago = (ts) => {
   const d = Math.floor((Date.now() - ts) / 86400000);
@@ -234,8 +242,8 @@ function sessionCard(s) {
   return `<a class="card session-card" href="#/sesion/${s.id}">
     <div class="sc-date"><b>${I.parseDate(s.date).getDate()}</b><span>${I.fmtDate(s.date, { month: 'short' }).replace('.', '')}</span></div>
     <div class="sc-main">
-      <div class="sc-title">${TYPE_LABEL[s.type] || 'Sesión'}${s.mood != null ? ` <span class="mood-i">${M.MOODS[s.mood]}</span>` : ''}</div>
-      <div class="sc-meta">${climbs.length ? `${plural(sent, 'conseguido', 'conseguidos')}${tried ? ` · ${tried} intentado${tried > 1 ? 's' : ''}` : ''}` : 'Sin bloques apuntados'}</div>
+      <div class="sc-title">${esc(titleOf(s))}${s.mood != null ? ` <span class="mood-i">${M.MOODS[s.mood]}</span>` : ''}</div>
+      <div class="sc-meta">${climbs.length ? `${plural(sent, 'conseguido', 'conseguidos')}${tried ? ` · ${tried} intentado${tried > 1 ? 's' : ''}` : ''}` : 'Sin bloques apuntados'}${(s.with || []).length ? ` · con ${esc(s.with.join(', '))}` : ''}</div>
       ${top.length ? `<div class="sc-grades">${top.map((c) => `<span class="dot${M.isSent(c) ? '' : ' open'}" style="--g:${M.gradeColor(c, set())}"></span>`).join('')}</div>` : ''}
     </div>
     ${photos[0] ? `<img class="sc-thumb" src="${photoURL(photos[0].id)}" alt="">` : `<span class="sc-go">${icon('chevron')}</span>`}
@@ -312,14 +320,57 @@ function viewHome() {
       </div>
     </section>
     ${!pending && !(plan?.today || plan?.pending) ? `<a class="btn primary block big" href="#/nueva" data-action="start-session">${icon('plus')} Registrar sesión</a>` : ''}
-    ${trying.length ? `<section><div class="section-head"><h2 class="section-title">Tus retos</h2><a href="#/sala" data-action="gym-filter-trying">Ver todos</a></div>
+    ${nextChallenge()}
+    ${trying.length ? `<section><div class="section-head"><h2 class="section-title">Bloques que estás intentando</h2><a href="#/sala" data-action="gym-filter-trying">Ver todos</a></div>
       <p class="muted small sub">Bloques que has intentado y siguen montados. ¡A por ellos!</p>
       <div class="tiles-row">${trying.map((x) => itemTile(x, itemStatus(log.get(x.vlId)))).join('')}</div></section>` : ''}
     ${last ? `<section><div class="section-head"><h2 class="section-title">Tu última sesión</h2><a href="#/diario">Diario</a></div>${sessionCard(last)}</section>` : ''}
-    ${insights.length ? `<section><h2 class="section-title">Para ti</h2><div class="insights">${insights.slice(0, 2).map(insightCard).join('')}</div></section>` : ''}
+    ${tipCard()}
+    ${insights.length ? `<section><h2 class="section-title">Para ti</h2><div class="insights">${[...noteInsights(), ...insights].slice(0, 2).map(insightCard).join('')}</div></section>` : ''}
     ${gymTeaser()}
     ${installCard()}
     ${!s.length ? `<div class="card soft center"><p>¿Quieres ver cómo queda con datos? Puedes cargar datos de ejemplo y borrarlos después en Ajustes.</p><button class="btn ghost" data-action="demo">Ver con datos de ejemplo</button></div>` : ''}`;
+}
+
+// Siguiente color/grado a por el que ir, según lo conseguido.
+function nextChallenge() {
+  const climbs = I.allClimbs(state.sessions);
+  const scale = M.boulderScale(set());
+  const out = [];
+  const bSent = climbs.filter((c) => c.discipline === 'boulder' && M.isSent(c)).map((c) => c.grade);
+  if (bSent.length || set().usualCircuit) {
+    const best = bSent.length ? Math.max(...bSent) : null;
+    let next = null;
+    if (best == null) next = M.boulderIndexByName(set(), set().usualCircuit);
+    else for (let i = best + 1; i < scale.length; i++) if (!scale[i].joker) { next = i; break; }
+    if (next != null && next >= 0) {
+      out.push(`<div class="nc"><span class="nc-k">Bloque</span>${gradeChip({ discipline: 'boulder', grade: next })}<small>${best != null ? `Ya tienes el ${esc(scale[best].name)}` : 'Tu color para empezar'}</small></div>`);
+    } else if (best != null) out.push(`<div class="nc"><span class="nc-k">Bloque</span>${gradeChip({ discipline: 'boulder', grade: best })}<small>¡Ya estás en el más difícil!</small></div>`);
+  }
+  const rSent = climbs.filter((c) => c.discipline === 'route' && M.isSent(c)).map((c) => c.grade);
+  if (rSent.length) {
+    const best = Math.max(...rSent);
+    const next = Math.min(best + 1, M.ROUTE_GRADES.length - 1);
+    out.push(`<div class="nc"><span class="nc-k">Vía</span>${gradeChip({ discipline: 'route', grade: next })}<small>Tu mejor: ${esc(M.ROUTE_GRADES[best])}</small></div>`);
+  }
+  if (!out.length) return '';
+  return `<section class="card next-card"><div class="nc-head">${icon('trophy')}<b>Tu próximo reto</b></div><div class="nc-row">${out.join('')}</div></section>`;
+}
+
+function tipCard() {
+  const t = tipOfDay(state.ui.tip);
+  return `<section class="card tip"><div class="tip-head"><span class="tip-cat">💡 ${esc(t.cat)}</span><button class="link" data-action="next-tip">Otro consejo ${icon('refresh')}</button></div><p>${esc(t.text)}</p></section>`;
+}
+
+// Avisos a partir de las notas (p. ej. molestias repetidas).
+function noteInsights() {
+  const recent = I.sortSessions(state.sessions).slice(0, 4);
+  const hurt = recent.filter((s) => (s.topics || N.topicsOf(s.notes)).includes('molestias')).length;
+  const fear = recent.filter((s) => (s.topics || N.topicsOf(s.notes)).includes('cabeza')).length;
+  const out = [];
+  if (hurt >= 2) out.push({ icon: '🩹', tone: 'warn', title: 'Has apuntado molestias varias veces', text: 'Escúchate: baja un poco la intensidad, calienta bien y, si el dolor sigue, consulta con un fisio.' });
+  if (fear >= 2) out.push({ icon: '🧠', tone: 'info', title: 'El miedo aparece en tus notas', text: 'Es muy normal. Practica caídas desde poca altura y sube en bloques fáciles para ganar confianza.' });
+  return out;
 }
 
 function planCardHTML(plan) {
@@ -446,21 +497,27 @@ function viewDetail(id) {
   const climbs = s.climbs || [];
   const photos = sessionPhotos(s.id);
   const sent = climbs.filter(M.isSent);
-  const tried = climbs.filter((c) => !M.isSent(c));
   const flashes = climbs.filter((c) => statusOf(c.result) === 'flash').length;
+  const specific = climbs.filter((c) => c.vlId);
   const date = I.parseDate(s.date).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const topics = s.topics || N.topicsOf(s.notes);
+  const byGrade = {};
+  climbs.forEach((c) => { const k = `${c.discipline}|${c.grade}`; const r = (byGrade[k] ||= { c, sent: 0, tried: 0 }); if (M.isSent(c)) r.sent++; else r.tried++; });
+  const rows = Object.values(byGrade).sort((a, b) => a.c.discipline.localeCompare(b.c.discipline) || b.c.grade - a.c.grade);
   return `<div class="topline"><a href="#/diario" class="back">${icon('back')} Diario</a>
       <div class="row-gap"><button class="icon-btn" data-action="share" data-id="${s.id}" aria-label="Compartir">${icon('share')}</button><a class="icon-btn" href="#/editar/${s.id}" aria-label="Editar">${icon('edit')}</a></div></div>
     <p class="eyebrow">${esc(date)}</p>
-    <h1 class="page-title">${TYPE_LABEL[s.type] || 'Sesión'}${s.mood != null ? ` ${M.MOODS[s.mood]}` : ''}</h1>
+    <h1 class="page-title">${esc(titleOf(s))}${s.mood != null ? ` ${M.MOODS[s.mood]}` : ''}</h1>
+    ${(s.with || []).length ? `<p class="with-line">👯 Con ${esc(s.with.join(', '))}</p>` : ''}
     <section class="kpis three">
       ${kpi(sent.length, 'conseguidos')}
       ${kpi(flashes, 'a la primera')}
-      ${kpi(tried.length, 'intentados')}
+      ${kpi(climbs.length - sent.length, 'intentados')}
     </section>
-    ${s.notes ? `<div class="card notes">${esc(s.notes).replace(/\n/g, '<br>')}</div>` : ''}
-    ${sent.length ? `<h2 class="section-title">Conseguidos</h2><div class="list">${sent.map(climbRow).join('')}</div>` : ''}
-    ${tried.length ? `<h2 class="section-title">Intentados</h2><div class="list">${tried.map(climbRow).join('')}</div>` : ''}
+    ${rows.length ? `<div class="card"><h3>Por ${rows.some((r) => r.c.discipline === 'route') && !rows.some((r) => r.c.discipline === 'boulder') ? 'grado' : 'color'}</h3>
+      ${rows.map((r) => `<div class="drow">${gradeChip(r.c, 'sm')}<span class="st-text-send">${r.sent ? `${icon('check', 'inline')} ${r.sent}` : ''}</span><span class="st-text-proj">${r.tried ? `${icon('refresh', 'inline')} ${r.tried}` : ''}</span></div>`).join('')}</div>` : ''}
+    ${s.notes ? `<div class="card notes">${esc(s.notes).replace(/\n/g, '<br>')}${topics.length ? `<div class="note-topics">${N.topicChips(topics)}</div>` : ''}</div>` : ''}
+    ${specific.length ? `<h2 class="section-title">Bloques de la sala</h2><div class="list">${specific.map(climbRow).join('')}</div>` : ''}
     ${photos.length ? `<h2 class="section-title">Fotos</h2><div class="gallery">${photos.map((p) => `<button class="thumb" data-action="photo" data-id="${p.id}"><img src="${photoURL(p.id)}" alt=""></button>`).join('')}</div>` : ''}
     <button class="btn danger ghost block" data-action="delete-session" data-id="${s.id}">${icon('trash')} Eliminar sesión</button>`;
 }
@@ -482,7 +539,8 @@ function climbRow(c) {
 
 // ---------------- Registrar sesión ----------------
 function newDraft() {
-  return { id: uid(), isNew: true, date: I.today(), type: 'boulder', duration: 90, rpe: null, mood: null, notes: '', climbs: [], newPhotos: [], removedPhotos: [], startedAt: null };
+  const t = I.today();
+  return { id: uid(), isNew: true, date: t, kind: P.isPlannedDay(t, set()) ? 'class' : 'free', with: [], type: 'boulder', duration: 90, rpe: null, mood: null, notes: '', climbs: [], newPhotos: [], removedPhotos: [], startedAt: null };
 }
 
 function ensureDraft() {
@@ -501,45 +559,90 @@ function viewEditor(editId) {
     const s = state.sessions.find((x) => x.id === editId);
     if (!s) return emptyState('Sesión no encontrada', '');
     if (state.draft?.isNew) state.stash = state.draft;
-    state.draft = { ...structuredClone(s), isNew: false, newPhotos: [], removedPhotos: [] };
+    state.draft = { with: [], ...structuredClone(s), isNew: false, newPhotos: [], removedPhotos: [] };
     state.ui.logDisc = s.type === 'route' ? 'route' : 'boulder';
   }
   if (!editId && !state.draft?.isNew) { state.draft = state.stash || newDraft(); state.stash = null; saveDraftSoon(); }
   const d = state.draft;
+  d.with ||= [];
   const disc = state.ui.logDisc;
   const photos = [...sessionPhotos(d.id).filter((p) => !d.removedPhotos.includes(p.id) && !p.climbId), ...d.newPhotos.filter((p) => !p.climbId)];
-  const sent = d.climbs.filter(M.isSent).length;
-  const flashes = d.climbs.filter((c) => statusOf(c.result) === 'flash').length;
   const dateLabel = I.parseDate(d.date).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+  const specific = d.climbs.filter((c) => c.vlId && c.discipline === disc).length;
+  const friends = [...new Set(state.sessions.flatMap((x) => x.with || []))].filter((f) => !d.with.includes(f)).slice(0, 8);
+  const topics = N.topicsOf(d.notes);
   return `<div class="topline"><button class="back" data-action="cancel-draft">${icon('back')} ${d.isNew ? 'Descartar' : 'Cancelar'}</button>
       ${d.startedAt ? `<button class="timer-pill" data-action="timer">${icon('timer')} <span data-timer></span></button>` : (d.isNew ? `<button class="timer-pill off" data-action="timer">${icon('timer')} Cronómetro</button>` : '')}</div>
     <h1 class="page-title">${d.isNew ? `Sesión ${esc(P.sessionOf(d.date))}` : 'Editar sesión'}</h1>
     <label class="date-line">${icon('calendar')} <span>${esc(dateLabel)}</span> <b>Cambiar</b><input type="date" data-field="date" value="${d.date}" max="${I.today()}" class="hidden-date"></label>
 
+    <div class="kind-pick">
+      <button class="kind ${d.kind !== 'free' ? 'on' : ''}" data-action="set-kind" data-v="class"><span>🎓</span><b>Clase</b></button>
+      <button class="kind ${d.kind === 'free' ? 'on' : ''}" data-action="set-kind" data-v="free"><span>🧗‍♀️</span><b>Libre</b></button>
+    </div>
+    ${d.kind === 'free' ? `<div class="card with-card"><b>¿Con quién has ido?</b>
+      <div class="chips">${d.with.map((f) => `<button class="chip on" data-action="with-del" data-v="${esc(f)}">${esc(f)} ${icon('close')}</button>`).join('')}
+        ${friends.map((f) => `<button class="chip" data-action="with-add" data-v="${esc(f)}">＋ ${esc(f)}</button>`).join('')}</div>
+      <div class="with-input"><input data-with placeholder="Escribe un nombre" enterkeyhint="done"><button class="btn sm" data-action="with-add-input">Añadir</button></div></div>` : ''}
+
     ${seg('log-disc', disc, { boulder: `${icon('boulder')} Bloques`, route: `${icon('rope')} Vías` })}
+    ${countsCard(disc)}
 
-    ${d.climbs.length ? `<div class="card session-sum">
-      <div class="sum-nums"><span><b>${sent}</b> conseguido${sent === 1 ? '' : 's'}</span>${flashes ? `<span><b>${flashes}</b> a la primera</span>` : ''}<span><b>${d.climbs.length - sent}</b> intentado${d.climbs.length - sent === 1 ? '' : 's'}</span></div>
-      <div class="sum-list">${d.climbs.slice().reverse().map((c) => `<button class="sum-item st-${STATUS[statusOf(c.result)].cls}" data-action="${c.vlId ? 'item' : 'edit-generic'}" data-id="${esc(c.vlId || c.id)}">
-        ${c.holdColor ? holdDot(c.holdColor, c.vlNumber, 'sm') : gradeChip(c, 'xs')}${icon(STATUS[statusOf(c.result)].icon)}</button>`).join('')}</div>
-    </div>` : ''}
-
-    ${logPicker(disc)}
+    <details class="card picker-box" ${state.ui.logOpen || specific ? 'open' : ''}>
+      <summary data-action="log-open">${icon('wall')}<span><b>Elegir ${disc === 'route' ? 'vías concretas' : 'bloques concretos'}</b><small>${specific ? `${plural(specific, 'elegido', 'elegidos')} de la sala` : 'Opcional · si te acuerdas de cuál era'}</small></span>${icon('chevron', 'chev')}</summary>
+      ${state.ui.logOpen || specific ? logPicker(disc) : ''}
+    </details>
 
     <div class="card form">
       <div class="field"><span>¿Cómo te has sentido?</span><div class="moods">${M.MOODS.map((m, i) => `<button class="mood ${d.mood === i ? 'on' : ''}" data-action="set-mood" data-v="${i}">${m}</button>`).join('')}</div></div>
-      <div class="field"><span>¿Cómo ha sido la sesión?</span><div class="seg">${Object.entries(EFFORT).map(([v, l]) => `<button class="${Number(d.rpe) === Number(v) ? 'on' : ''}" data-action="set-effort" data-v="${v}">${l}</button>`).join('')}</div></div>
-      ${d.startedAt ? '' : `<div class="field"><span>¿Cuánto rato?</span><div class="seg">${[60, 90, 120, 150].map((m) => `<button class="${d.duration === m ? 'on' : ''}" data-action="set-duration" data-v="${m}">${fmtMin(m)}</button>`).join('')}</div></div>`}
+      <div class="field"><span>¿Cómo ha sido?</span><div class="seg">${Object.entries(EFFORT).map(([v, l]) => `<button class="${Number(d.rpe) === Number(v) ? 'on' : ''}" data-action="set-effort" data-v="${v}">${l}</button>`).join('')}</div></div>
     </div>
 
-    <details class="card more-box" ${d.notes || photos.length ? 'open' : ''}><summary>${icon('camera')} Añadir nota o fotos <span class="muted small">opcional</span></summary>
+    <div class="card notes-card">
+      <b>Notas</b>
+      <textarea data-field="notes" rows="3" placeholder="¿Qué tal ha ido? ¿Qué te ha costado? ¿Algo que quieras recordar?">${esc(d.notes)}</textarea>
+      <div class="note-topics">${topics.length ? `<small class="muted">Lo apunto como:</small> ${N.topicChips(topics)}` : ''}</div>
       <div class="gallery">
         ${photos.map((p) => `<div class="thumb"><img src="${photoURL(p.id)}" alt=""><button class="x" data-action="remove-photo" data-id="${p.id}" aria-label="Quitar foto">${icon('close')}</button></div>`).join('')}
-        <label class="thumb add-photo"><input type="file" accept="image/*" multiple data-upload="session" hidden>${icon('camera')}<span>Añadir</span></label>
+        <label class="thumb add-photo"><input type="file" accept="image/*" multiple data-upload="session" hidden>${icon('camera')}<span>Foto</span></label>
       </div>
-      <textarea data-field="notes" rows="3" placeholder="¿Algo que quieras recordar?">${esc(d.notes)}</textarea>
-    </details>
+    </div>
     <div class="save-bar"><button class="btn primary block big" data-action="save-session">${icon('check')} ${d.isNew ? 'Guardar sesión' : 'Guardar cambios'}</button></div>`;
+}
+
+// Contadores rápidos por color (bloque) o grado (vía): conseguidos e intentados.
+function countsCard(disc) {
+  const d = state.draft;
+  const mine = d.climbs.filter((c) => c.discipline === disc);
+  const cnt = (g, sent) => mine.filter((c) => c.grade === g && M.isSent(c) === sent).length;
+  let grades;
+  if (disc === 'boulder') {
+    grades = M.boulderScale(set()).map((g, i) => ({ i, label: g.name, color: g.color, joker: g.joker })).filter((g) => !g.joker || mine.some((c) => c.grade === g.i));
+  } else {
+    const rows = new Set([...mine.map((c) => c.grade), ...state.ui.routeRows]);
+    grades = [...rows].sort((a, b) => a - b).map((i) => ({ i, label: M.ROUTE_GRADES[i], color: M.routeColor(i) }));
+  }
+  const sentG = mine.filter(M.isSent).map((c) => c.grade);
+  const triedG = mine.filter((c) => !M.isSent(c)).map((c) => c.grade);
+  const label = (g) => M.gradeLabel({ discipline: disc, grade: g }, set());
+  const hardest = sentG.length ? Math.max(...sentG) : null;
+  const hardestTry = triedG.length ? Math.max(...triedG) : null;
+  const ctr = (g, sent) => {
+    const n = cnt(g.i, sent);
+    return `<div class="ctr ${sent ? 'send' : 'proj'} ${n ? 'has' : ''}">
+      <button data-action="cnt" data-g="${g.i}" data-r="${sent ? 'send' : 'project'}" data-d="-1" aria-label="Menos" ${n ? '' : 'disabled'}>${icon('minus')}</button>
+      <b>${n}</b>
+      <button data-action="cnt" data-g="${g.i}" data-r="${sent ? 'send' : 'project'}" data-d="1" aria-label="Más">${icon('plus')}</button></div>`;
+  };
+  const addRoute = disc === 'route' ? `<div class="add-grade"><small class="muted">${grades.length ? 'Añadir otro grado' : '¿Qué grados has hecho?'}</small>
+      <div class="chips scroll">${M.ROUTE_GRADES.slice(0, 24).map((g, i) => (grades.some((x) => x.i === i) ? '' : `<button class="chip sm" data-action="route-row" data-v="${i}">${g}</button>`)).join('')}</div></div>` : '';
+  return `<div class="card counts">
+    <div class="counts-head"><b>¿Qué has hecho?</b><span class="ch-k"><i class="k-send">${icon('check')}</i>Conseguidos</span><span class="ch-k"><i class="k-proj">${icon('refresh')}</i>Intentados</span></div>
+    ${grades.map((g) => `<div class="crow ${cnt(g.i, true) + cnt(g.i, false) ? 'active' : ''}">
+      <span class="grade sm${g.joker ? ' joker' : ''}" style="${C.gradeStyle(g.color)}">${esc(g.label)}</span>${ctr(g, true)}${ctr(g, false)}</div>`).join('')}
+    ${addRoute}
+    ${mine.length ? `<p class="counts-sum">${hardest != null ? `Lo más difícil conseguido: <b>${esc(label(hardest))}</b>` : ''}${hardestTry != null && (hardest == null || hardestTry > hardest) ? `${hardest != null ? ' · ' : ''}Has llegado a intentar <b>${esc(label(hardestTry))}</b>` : ''}</p>` : ''}
+  </div>`;
 }
 
 // Selector de bloques/vías de la sala para apuntar.
@@ -547,7 +650,7 @@ function logPicker(disc) {
   const g = state.gym;
   const d = state.draft;
   const inSession = new Map(d.climbs.filter((c) => c.vlId).map((c) => [c.vlId, c.result]));
-  const generic = genericRow(disc);
+  const generic = '';
   if (!g && state.gymLoading) return `<div class="skeleton-list">${'<div class="skel"></div>'.repeat(4)}</div>${generic}`;
   const items = g ? (disc === 'route' ? g.routes : g.boulders) : [];
   if (!items.length) return `<div class="card soft"><p class="muted small">No se han podido cargar los ${disc === 'route' ? 'vías' : 'bloques'} de la sala. Puedes apuntarlos por color:</p></div>${generic}`;
@@ -575,8 +678,7 @@ function logPicker(disc) {
   const shown = list.filter((x) => state.ui.logSector === 'all' || x.sector === state.ui.logSector)
     .sort((a, b) => a.sector.localeCompare(b.sector) || a.number.localeCompare(b.number, undefined, { numeric: true }));
   return `<section class="picker">
-    <h2 class="section-title">¿Qué ${disc === 'route' ? 'vías' : 'bloques'} has probado?</h2>
-    <p class="muted small sub">Toca uno y elige cómo te ha ido.</p>
+    <p class="muted small sub">Toca uno y elige cómo te ha ido. Se suma a los contadores de arriba.</p>
     ${filterChips}
     ${sectors.length > 1 ? `<div class="chips scroll sector-chips"><button class="chip sm ${state.ui.logSector === 'all' ? 'on' : ''}" data-action="log-sector" data-v="all">Todos los sectores</button>${sectors.map((x) => `<button class="chip sm ${state.ui.logSector === x ? 'on' : ''}" data-action="log-sector" data-v="${esc(x)}">${esc(x)}</button>`).join('')}</div>` : ''}
     ${shown.length ? `<div class="tile-grid">${shown.map((x) => itemTile(x, itemStatus(log.get(x.vlId)), { inSession: inSession.get(x.vlId), showGrade: disc === 'route' || state.ui.logCircuit === 'new' })).join('')}</div>`
@@ -806,7 +908,17 @@ function progSummary() {
     <div class="card"><h3>Tu nivel cada semana</h3>${C.weeklyBars(weeks, label, color, best?.grade ?? 0)}</div>
     ${used.length ? `<div class="card"><h3>Por ${disc === 'route' ? 'grado' : 'color'}</h3>${C.colorBars(used)}</div>` : ''}
     <div class="card"><h3>Días que has escalado</h3><div class="scroll-x">${C.calendarHeatmap(s)}</div></div>
+    ${topicsCard()}
     ${trying.length ? `<div class="card"><h3>${icon('refresh')} Estás intentando</h3><p class="muted small">Siguen montados en la sala: ¡la próxima vez saldrán!</p><div class="tile-grid">${trying.map((x) => itemTile(x, itemStatus(log.get(x.vlId)))).join('')}</div></div>` : ''}`;
+}
+
+function topicsCard() {
+  const counts = {};
+  state.sessions.forEach((s) => (s.topics || N.topicsOf(s.notes)).forEach((t) => { counts[t] = (counts[t] || 0) + 1; }));
+  const list = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  if (!list.length) return '';
+  const max = list[0][1];
+  return `<div class="card"><h3>De qué hablan tus notas</h3>${list.map(([k, n]) => `<div class="bar-row wide"><span>${N.TOPICS[k].emoji} ${N.TOPICS[k].label}</span><div class="bar"><i style="width:${Math.round(n / max * 100)}%"></i></div><small>${n}</small></div>`).join('')}</div>`;
 }
 
 function ringColor(done, total, color) {
@@ -860,7 +972,7 @@ function viewSettings() {
     <div class="card form">
       <label class="field"><span>Tu nombre</span><input data-setting="name" value="${esc(st.name)}" placeholder="¿Cómo te llamas?"></label>
       <div class="field"><span>Objetivo semanal</span><div class="seg">${[1, 2, 3].map((n) => `<button class="${(st.weeklyGoal || 1) === n ? 'on' : ''}" data-action="set-goal" data-v="${n}">${plural(n, 'sesión', 'sesiones')}</button>`).join('')}</div></div>
-      <div class="field"><span>Tema</span>${seg('theme', st.theme || 'auto', { auto: 'Automático', light: 'Claro', dark: 'Oscuro' })}</div>
+      <div class="field"><span>Aspecto</span>${seg('theme', st.theme || 'light', { light: 'Claro', dark: 'Oscuro', auto: 'Como el móvil' })}</div>
     </div>
     <div class="card form">
       <h3>${icon('calendar')} Tus días de escalada</h3>
@@ -931,6 +1043,7 @@ async function saveSession() {
   const discs = new Set(session.climbs.map((c) => c.discipline));
   session.type = discs.size > 1 ? 'mixed' : discs.has('route') ? 'route' : discs.has('boulder') ? 'boulder' : (state.ui.logDisc || 'boulder');
   if (!session.rpe) session.rpe = 6;
+  session.topics = N.topicsOf(session.notes);
   session.createdAt ||= Date.now();
   session.updatedAt = Date.now();
   const climbIds = new Set(session.climbs.map((c) => c.id));
@@ -946,6 +1059,7 @@ async function saveSession() {
   const i = state.sessions.findIndex((s) => s.id === session.id);
   if (i >= 0) state.sessions[i] = session; else state.sessions.push(session);
   await clearDraft();
+  state.ui.logOpen = false; state.ui.routeRows = [];
   haptic([10, 40, 10]);
   if (isNew) celebrate();
   toast(isNew ? '¡Sesión guardada! 💪' : 'Cambios guardados');
@@ -1060,7 +1174,7 @@ const actions = {
     let d = state.draft?.isNew ? state.draft : null;
     if (d && d.climbs.length && d.date !== date) { toast('Ya tienes una sesión abierta: termínala primero'); go('#/nueva'); return; }
     d = ensureDraft();
-    d.date = date; d.type = type; state.ui.logDisc = type;
+    d.date = date; d.type = type; state.ui.logDisc = type; d.kind = P.isPlannedDay(date, set()) ? 'class' : 'free';
     const plan = P.planState(set(), state.sessions, null);
     if (date === I.today() && !(plan.today?.after) && !d.startedAt) d.startedAt = Date.now();
     saveDraftSoon(); haptic();
@@ -1093,7 +1207,7 @@ const actions = {
   'prog-tab'(el) { state.ui.progTab = el.dataset.v; if (location.hash === '#/progreso') rerender(); },
   'prog-disc'(el) { state.ui.progDisc = el.dataset.v; rerender(); },
   'body-range'(el) { state.ui.bodyRange = el.dataset.v; rerender(); },
-  async theme(el) { state.settings.theme = el.dataset.v === 'auto' ? undefined : el.dataset.v; applyTheme(); await saveSettings(); rerender(); },
+  async theme(el) { state.settings.theme = el.dataset.v; applyTheme(); await saveSettings(); rerender(); },
   photo(el) { openPhoto(el.dataset.id); },
   async share(el) {
     const s = state.sessions.find((x) => x.id === el.dataset.id);
@@ -1118,6 +1232,7 @@ const actions = {
     if (d?.isNew && (d.climbs.length || d.newPhotos.length || d.notes) && !confirm('¿Descartar esta sesión sin guardar?')) return;
     const back = d && !d.isNew ? `#/sesion/${d.id}` : '#/inicio';
     await clearDraft();
+    state.ui.logOpen = false; state.ui.routeRows = [];
     go(back);
   },
   timer() {
@@ -1126,6 +1241,26 @@ const actions = {
     else { d.startedAt = Date.now(); toast('¡A escalar! ⏱'); }
     saveDraftSoon(); rerender();
   },
+  'set-kind'(el) { state.draft.kind = el.dataset.v; saveDraftSoon(); rerender(); },
+  'with-add'(el) { addWith(el.dataset.v); },
+  'with-add-input'() { const inp = $('[data-with]'); addWith(inp?.value); },
+  'with-del'(el) { state.draft.with = state.draft.with.filter((f) => f !== el.dataset.v); saveDraftSoon(); rerender(); },
+  cnt(el) {
+    const d = state.draft; const g = Number(el.dataset.g); const r = el.dataset.r; const disc = state.ui.logDisc;
+    const sent = r === 'send';
+    if (Number(el.dataset.d) > 0) {
+      d.climbs.push({ id: uid(), discipline: disc, grade: g, result: r, attempts: sent ? 2 : 3, styles: [], holds: [], moves: [], name: '', zone: '', notes: '' });
+      haptic(6);
+    } else {
+      const idx = d.climbs.map((c, k) => [c, k]).reverse().find(([c]) => c.discipline === disc && c.grade === g && M.isSent(c) === sent && !c.vlId)?.[1];
+      if (idx == null) { toast('Ese lo elegiste de la sala: quítalo desde «Elegir bloques concretos»'); return; }
+      d.climbs.splice(idx, 1); haptic(4);
+    }
+    saveDraftSoon(); rerender();
+  },
+  'route-row'(el) { state.ui.routeRows = [...new Set([...state.ui.routeRows, Number(el.dataset.v)])]; rerender(); },
+  'log-open'(el, e) { e.preventDefault(); state.ui.logOpen = !el.closest('details').open; rerender(); },
+  'next-tip'() { state.ui.tip++; rerender(); },
   'set-mood'(el) { const v = Number(el.dataset.v); state.draft.mood = state.draft.mood === v ? null : v; saveDraftSoon(); rerender(); },
   'set-effort'(el) { state.draft.rpe = Number(el.dataset.v); saveDraftSoon(); rerender(); },
   'set-duration'(el) { state.draft.duration = Number(el.dataset.v); saveDraftSoon(); rerender(); },
@@ -1205,6 +1340,13 @@ const actions = {
   },
 };
 
+function addWith(name) {
+  const n = (name || '').trim().replace(/\s+/g, ' ').slice(0, 40);
+  if (!n) return;
+  const d = state.draft; d.with = [...new Set([...(d.with || []), n])];
+  saveDraftSoon(); rerender();
+}
+
 async function addExtraDate(iso) {
   if (!iso) return;
   state.settings.extraDates = [...new Set([...(set().extraDates || []), iso])].filter((d) => d >= I.today()).sort();
@@ -1229,10 +1371,18 @@ function onClick(e) {
 }
 
 let settingsTimer;
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.target.matches?.('[data-with]')) { e.preventDefault(); addWith(e.target.value); }
+});
+
 function onInput(e) {
   const el = e.target;
   if (el.dataset.field && state.draft && el.type !== 'date') {
     state.draft[el.dataset.field] = el.value;
+    if (el.dataset.field === 'notes') {
+      const box = $('.notes-card .note-topics'); const t = N.topicsOf(el.value);
+      if (box) box.innerHTML = t.length ? `<small class="muted">Lo apunto como:</small> ${N.topicChips(t)}` : '';
+    }
     saveDraftSoon(400);
   } else if (el.dataset.setting) {
     state.settings[el.dataset.setting] = el.value;
