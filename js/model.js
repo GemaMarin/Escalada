@@ -56,11 +56,12 @@ function gradeHue(t) {
   return `hsl(${(h + 360) % 360} 75% 48%)`;
 }
 
+// Resultado de cada intento. Claves internas estables; textos sencillos.
 export const RESULTS = {
-  flash: { label: 'Flash', short: '⚡', desc: 'A la primera', sent: true },
-  onsight: { label: 'A vista', short: '👁', desc: 'A la primera sin info', sent: true },
-  send: { label: 'Encadenado', short: '✓', desc: 'Tras varios intentos', sent: true },
-  project: { label: 'Proyecto', short: '…', desc: 'Aún no sale', sent: false },
+  flash: { label: 'A la primera', short: '⚡', desc: 'Te salió al primer intento', sent: true },
+  onsight: { label: 'A la primera', short: '⚡', desc: 'Te salió al primer intento', sent: true },
+  send: { label: 'Conseguido', short: '✓', desc: 'Lo conseguiste', sent: true },
+  project: { label: 'Intentado', short: '↻', desc: 'Lo probaste pero aún no sale', sent: false },
 };
 
 export const ROPE_MODES = { lead: 'De primera', toprope: 'En polea', auto: 'Autobelay' };
