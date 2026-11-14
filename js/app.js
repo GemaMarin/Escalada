@@ -72,6 +72,7 @@ async function init() {
     const d = new Date(); d.setDate(d.getDate() - 7);
     state.settings.planSince = I.toISO(d);
   }
+  if (!state.settings.seenAch) state.settings.seenAch = '__init__';
   if (settings) await db.put('settings', state.settings);
   photos.forEach((p) => state.photos.set(p.id, p));
   if (draft?.value) state.draft = { newPhotos: [], removedPhotos: [], ...draft.value };
@@ -90,6 +91,20 @@ async function init() {
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
   protectStorage();
   if (set().liveGym !== false) loadGym();
+  loadEvents();
+  if (set().seenAch === '__init__') { state.settings.seenAch = I.unlockedKeys(achievementsNow()); saveSettings(); }
+}
+
+async function loadEvents() {
+  try {
+    const res = await fetch('data/events.json', { cache: 'no-cache' });
+    if (!res.ok) throw new Error(res.status);
+    state.events = await res.json();
+    db.put('settings', { key: 'events-cache', value: state.events });
+  } catch {
+    state.events = (await db.get('settings', 'events-cache'))?.value || { events: [], fetchedAt: 0 };
+  }
+  if (['inicio', 'eventos'].includes(route()) && !document.querySelector('dialog[open]')) rerender();
 }
 
 // Pide al navegador que no borre nunca los datos guardados (sesiones y fotos).
@@ -111,7 +126,7 @@ async function loadGym(force = false) {
   state.gymLoading = true;
   if (['sala', 'nueva'].includes(route())) rerender();
   try { state.gym = await S.getGym({ force }); } finally { state.gymLoading = false; }
-  if (['sala', 'inicio', 'nueva', 'progreso'].includes(route()) && !document.querySelector('dialog[open]')) rerender();
+  if (['sala', 'inicio', 'nueva', 'progreso', 'eventos'].includes(route()) && !document.querySelector('dialog[open]')) rerender();
 }
 
 // ---------------- Router ----------------
@@ -126,6 +141,7 @@ const routes = [
   [/^#\/progreso$/, viewProgress, 'progreso'],
   [/^#\/cuerpo$/, viewProgress, 'progreso'],
   [/^#\/ajustes$/, viewSettings, 'ajustes'],
+  [/^#\/eventos$/, viewEvents, 'eventos'],
 ];
 const route = () => document.body.dataset.route;
 
@@ -176,6 +192,19 @@ function myLog() {
   return map;
 }
 const itemStatus = (st) => (!st ? 'none' : M.RESULTS[st.best]?.sent ? 'sent' : 'trying');
+
+// Devuelve el logro recién conseguido (si hay) y lo marca como visto.
+function checkNewAchievements() {
+  const ach = achievementsNow();
+  const keys = I.unlockedKeys(ach);
+  const seen = new Set(set().seenAch || []);
+  const fresh = keys.filter((k) => !seen.has(k));
+  state.settings.seenAch = [...new Set([...seen, ...keys])];
+  saveSettings();
+  if (!fresh.length) return null;
+  const fam = fresh[fresh.length - 1].split(':')[0];
+  return ach.find((a) => a.key === fam);
+}
 
 function circuitProgress(g) {
   const log = myLog();
@@ -275,7 +304,6 @@ function seg(action, current, options) {
 }
 
 const kpi = (v, l, raw = false) => `<div class="kpi"><div class="kpi-v">${raw ? v : esc(v)}</div><div class="kpi-l">${l}</div></div>`;
-const badge = (a) => `<div class="badge ${a.done ? 'done' : ''}" title="${esc(a.desc)}"><span>${a.icon}</span><b>${esc(a.title)}</b><small>${esc(a.desc)}</small></div>`;
 
 function ring(value, goal, size = 92) {
   const r = (size - 10) / 2; const c = 2 * Math.PI * r; const p = Math.min(1, goal ? value / goal : 0);
@@ -338,7 +366,7 @@ function viewHome() {
       <div class="tiles-row">${trying.map((x) => itemTile(x, itemStatus(log.get(x.vlId)))).join('')}</div></section>` : ''}
     ${last ? `<section><div class="section-head"><h2 class="section-title">Tu última sesión</h2><a href="#/diario">Diario</a></div>${sessionCard(last)}</section>` : ''}
     ${insights.length ? `<section><h2 class="section-title">Para ti</h2><div class="insights">${[...noteInsights(), ...insights].slice(0, 2).map(insightCard).join('')}</div></section>` : ''}
-    ${gymTeaser()}
+    ${newsCard()}
     ${backupCard()}
     ${installCard()}
     ${!s.length ? `<div class="card soft center"><p>¿Quieres ver cómo queda con datos? Puedes cargar datos de ejemplo y borrarlos después en Ajustes.</p><button class="btn ghost" data-action="demo">Ver con datos de ejemplo</button></div>` : ''}`;
@@ -422,14 +450,92 @@ function scheduleFields(sch, extras) {
     <p class="muted small">Se crea un evento semanal en el calendario del móvil que te avisa antes de la clase y, al terminar, te recuerda apuntar la sesión.</p>`;
 }
 
-function gymTeaser() {
-  const g = state.gym;
-  if (!g || (!g.boulders.length && !g.routes.length)) return '';
+// ---------------- Eventos y novedades ----------------
+const SHARMA_IG = 'https://www.instagram.com/sharmaclimbingmadrid/';
+const evDate = (iso) => new Date(iso.replace(' ', 'T'));
+const evDay = (iso) => evDate(iso).toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' });
+
+function allEvents() {
+  const web = (state.events?.events || []).map((e) => ({ ...e, source: 'sharma', cats: [...new Set(e.cats || [])] }));
+  const mine = (set().myEvents || []).map((e) => ({ id: e.id, title: e.title, start: `${e.date} 00:00:00`, end: `${e.end || e.date} 23:59:59`, url: e.url, summary: e.note, source: 'mine', cats: [] }));
+  return [...web, ...mine].sort((a, b) => a.start.localeCompare(b.start));
+}
+
+function newBlocks(days = 30) {
+  const items = gymItems().filter((x) => Date.now() - x.date < days * 86400000);
+  const groups = {};
+  items.forEach((x) => { const k = `${I.toISO(new Date(x.date))}|${x.sector}`; (groups[k] ||= []).push(x); });
+  return Object.entries(groups).map(([k, list]) => { const [date, sector] = k.split('|'); return { date, sector, list }; })
+    .sort((a, b) => b.date.localeCompare(a.date) || a.sector.localeCompare(b.sector));
+}
+
+function newsCard() {
+  const now = new Date();
+  const upcoming = allEvents().filter((e) => evDate(e.end || e.start) >= now);
   const fresh = gymItems().filter((x) => Date.now() - x.date < WEEK);
-  return `<a class="card gym-teaser" href="#/sala" ${fresh.length ? 'data-action="gym-filter-new"' : ''}>
-    <div class="gt-head"><span class="gt-icon">${icon('wall')}</span><div><b>${fresh.length ? `${plural(fresh.length, 'bloque o vía nueva', 'bloques y vías nuevos')} esta semana` : 'Bloques y vías de la sala'}</b>
-    <small>${g.boulders.length} bloques · ${g.routes.length} vías montados ahora</small></div>${icon('chevron', 'muted')}</div>
+  if (!upcoming.length && !fresh.length && !state.gym) return '';
+  const ev = upcoming[0];
+  return `<a class="card news" href="#/eventos">
+    <div class="gt-head"><span class="gt-icon">${icon('sparkle')}</span><div><b>Eventos y novedades</b>
+      <small>${ev ? `${esc(ev.title)} · ${esc(evDay(ev.start))}` : 'Sin eventos próximos ahora mismo'}</small></div>${icon('chevron', 'muted')}</div>
+    ${fresh.length ? `<p class="news-line">${icon('wall')} ${plural(fresh.length, 'bloque o vía nueva', 'bloques y vías nuevos')} esta semana</p>` : ''}
   </a>`;
+}
+
+function eventCard(e, past = false) {
+  const d = evDate(e.start);
+  const multi = e.end && e.end.slice(0, 10) !== e.start.slice(0, 10);
+  return `<div class="card event ${past ? 'past' : ''}">
+    <div class="ev-date"><b>${d.getDate()}</b><span>${d.toLocaleDateString('es-ES', { month: 'short' }).replace('.', '')}</span></div>
+    <div class="ev-main">
+      <div class="ev-tags">${e.source === 'mine' ? '<span class="ev-tag mine">Apuntado por ti</span>' : '<span class="ev-tag">Sharma</span>'}${(e.cats || []).map((c) => `<span class="ev-tag">${esc(c)}</span>`).join('')}</div>
+      <b>${esc(e.title)}</b>
+      ${multi ? `<small class="muted">Hasta el ${esc(evDay(e.end))}</small>` : ''}
+      ${e.summary ? `<p>${esc(e.summary)}</p>` : ''}
+      <div class="row-gap">${e.url && /^https?:\/\//.test(e.url) ? `<a class="link" href="${esc(e.url)}" target="_blank" rel="noopener">Ver más ${icon('external')}</a>` : ''}
+        ${e.source === 'mine' ? `<button class="link danger" data-action="myev-del" data-id="${esc(e.id)}">${icon('trash')} Borrar</button>` : ''}</div>
+    </div></div>`;
+}
+
+function viewEvents() {
+  const now = new Date();
+  const evs = allEvents();
+  const upcoming = evs.filter((e) => evDate(e.end || e.start) >= now);
+  const past = evs.filter((e) => evDate(e.end || e.start) < now).reverse().slice(0, 6);
+  const blocks = newBlocks(30).slice(0, 6);
+  const scale = M.boulderScale(set());
+  const fetched = state.events?.fetchedAt;
+  return `<div class="topline"><a href="#/inicio" class="back">${icon('back')} Inicio</a><button class="btn sm" data-action="myev-add">${icon('plus')} Apuntar evento</button></div>
+    <h1 class="page-title">Eventos y novedades</h1>
+    <h2 class="section-title">Próximos eventos</h2>
+    ${upcoming.length ? `<div class="list">${upcoming.map((e) => eventCard(e)).join('')}</div>`
+      : `<div class="card soft"><p class="muted small">Ahora mismo el Sharma no tiene eventos publicados en su web. ¿Has visto algo en su Instagram (Black Friday, Día del Socio…)? Apúntalo con «Apuntar evento».</p></div>`}
+    <a class="card ig" href="${SHARMA_IG}" target="_blank" rel="noopener"><span class="ig-ic">📷</span><div><b>Instagram del Sharma Madrid</b><small>Promociones, avisos y novedades del día a día</small></div>${icon('external', 'muted')}</a>
+    ${blocks.length ? `<h2 class="section-title">Bloques y vías nuevos</h2>
+      <div class="list">${blocks.map((b) => {
+        const byColor = {};
+        b.list.forEach((x) => { byColor[x.grade] = (byColor[x.grade] || 0) + 1; });
+        return `<button class="card new-block" data-action="news-sector" data-sector="${esc(b.sector)}" data-kind="${b.list[0].kind}" data-recent="${Date.now() - b.list[0].date < WEEK ? 1 : ''}">
+          <div class="nb-head"><b>${esc(b.sector)}</b><small class="muted">${esc(P.niceDate(b.date))} · ${plural(b.list.length, b.list[0].kind === 'route' ? 'vía nueva' : 'bloque nuevo', b.list[0].kind === 'route' ? 'vías nuevas' : 'bloques nuevos')}</small></div>
+          <div class="nb-colors">${Object.entries(byColor).sort((x, y) => (scale.findIndex((g) => g.name === x[0]) - scale.findIndex((g) => g.name === y[0])) || x[0].localeCompare(y[0])).map(([g, n]) => `<span class="grade xs" style="${C.gradeStyle(itemGradeColor(b.list.find((x) => x.grade === g)))}">${esc(g)} ×${n}</span>`).join('')}</div>
+        </button>`;
+      }).join('')}</div>` : ''}
+    ${past.length ? `<h2 class="section-title">Eventos anteriores</h2><div class="list">${past.map((e) => eventCard(e, true)).join('')}</div>` : ''}
+    <p class="muted small center src">Los eventos de la web del Sharma y los bloques se actualizan solos cada día${fetched ? ` · última vez ${ago(fetched)}` : ''}.</p>`;
+}
+
+function myEventSheet() {
+  openSheet(`<div class="sheet">
+    <div class="grabber"></div>
+    <div class="sheet-head"><button class="link" data-action="close-sheet" type="button">Cancelar</button><b>Apuntar evento</b><span></span></div>
+    <div class="sheet-body">
+      <label class="field"><span>¿Qué es?</span><input data-myev="title" placeholder="p. ej. Black Friday en el Sharma" maxlength="80"></label>
+      <div class="two"><label class="field"><span>Empieza</span><input type="date" data-myev="date" value="${I.today()}"></label>
+      <label class="field"><span>Termina <small class="muted">opcional</small></span><input type="date" data-myev="end"></label></div>
+      <label class="field"><span>Nota <small class="muted">opcional</small></span><textarea data-myev="note" rows="2" placeholder="p. ej. 20% en abonos y material"></textarea></label>
+      <label class="field"><span>Enlace <small class="muted">opcional</small></span><input data-myev="url" type="url" placeholder="https://…"></label>
+    </div>
+    <div class="sheet-foot"><button class="btn primary block" data-action="myev-save">Guardar evento</button></div></div>`);
 }
 
 function backupCard() {
@@ -985,11 +1091,24 @@ function ringColor(done, total, color) {
     <text x="32" y="37" text-anchor="middle" class="ring-pct">${Math.round(p * 100)}%</text></svg>`;
 }
 
+function achievementsNow() {
+  const g = state.gym;
+  const complete = g ? circuitProgress(g).filter((c) => c.total && !c.joker && c.done === c.total).length : 0;
+  return I.achievements(state.sessions, state.photos.size, { scale: M.boulderScale(set()), completeCircuits: complete });
+}
+
 function progAchievements() {
-  const ach = I.achievements(state.sessions, state.photos.size);
-  const done = ach.filter((a) => a.done).length;
-  return `<div class="card ach-head">${ring(done, ach.length, 76)}<div><b>${done} de ${ach.length} logros</b><small class="muted">Sigue escalando para desbloquear el resto.</small></div></div>
-    <div class="badges">${ach.map(badge).join('')}</div>`;
+  const ach = achievementsNow();
+  const got = ach.reduce((a, x) => a + x.level, 0);
+  const total = ach.reduce((a, x) => a + x.max, 0);
+  return `<div class="card ach-head">${ring(got, total, 76)}<div><b>${got} de ${total} logros</b><small class="muted">Cada logro tiene niveles: al completar uno aparece el siguiente.</small></div></div>
+    <div class="ach-grid">${ach.map((a) => `<div class="ach ${a.level ? 'got' : ''} ${a.complete ? 'complete' : ''}">
+      <div class="ach-top"><span class="ach-ic">${a.icon}</span>${a.level ? `<span class="ach-lv">Nivel ${a.level}</span>` : ''}</div>
+      <b>${esc(a.title)}</b>
+      ${a.done ? `<small class="ach-done">✓ ${esc(a.done)}</small>` : ''}
+      <small class="ach-next">${a.complete ? '🏅 ¡Todo completado!' : `Siguiente: ${esc(a.goal)}`}</small>
+      ${a.complete ? '' : `<div class="bar"><i style="width:${Math.round(a.progress * 100)}%"></i></div>`}
+    </div>`).join('')}</div>`;
 }
 
 // ---------------- Ajustes ----------------
@@ -1055,7 +1174,12 @@ function saveDraftSoon(delay = 0) {
   if (!delay) return saveDraftNow();
   draftTimer = setTimeout(saveDraftNow, delay);
 }
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveDraftNow(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') { saveDraftNow(); return; }
+  // Al volver a la app: refresca bloques y eventos si hace rato que no se miran.
+  if (set().liveGym !== false && (!state.gym || Date.now() - (state.gym.fetchedAt || 0) > 3 * 3600 * 1000)) loadGym();
+  if (!state.events || Date.now() - (state.eventsAt || 0) > 3 * 3600 * 1000) { state.eventsAt = Date.now(); loadEvents(); }
+});
 async function clearDraft() {
   const wasNew = state.draft?.isNew;
   state.draft = null;
@@ -1091,10 +1215,11 @@ async function saveSession() {
   if (i >= 0) state.sessions[i] = session; else state.sessions.push(session);
   await clearDraft();
   state.ui.logOpen = false; state.ui.routeRows = [];
+  const fresh = checkNewAchievements();
   protectStorage();
   haptic([10, 40, 10]);
-  if (isNew) celebrate();
-  toast(isNew ? '¡Sesión guardada! 💪' : 'Cambios guardados');
+  if (isNew || fresh) celebrate();
+  toast(fresh ? `🏅 ¡Nuevo logro! ${fresh.title} · ${fresh.done}` : isNew ? '¡Sesión guardada! 💪' : 'Cambios guardados');
   go(`#/sesion/${session.id}`);
 }
 
@@ -1164,7 +1289,7 @@ const actions = {
     const sessions = makeDemo(set(), state.gym);
     await db.putMany('sessions', sessions);
     state.sessions.push(...sessions);
-    state.settings.onboarded = true; await saveSettings();
+    state.settings.onboarded = true; state.settings.seenAch = I.unlockedKeys(achievementsNow()); await saveSettings();
     toast('Datos de ejemplo cargados');
     go('#/inicio');
   },
@@ -1186,7 +1311,7 @@ const actions = {
     clearTimeout(actions.wipe.t);
     await Promise.all([db.clear('sessions'), db.clear('photos'), db.clear('settings')]);
     state.urls.forEach((u) => URL.revokeObjectURL(u)); state.urls.clear();
-    Object.assign(state, { sessions: [], draft: null, stash: null, settings: { ...DEFAULT_SETTINGS } });
+    Object.assign(state, { sessions: [], draft: null, stash: null, settings: { ...DEFAULT_SETTINGS, seenAch: [] } });
     state.photos.clear(); state.ui.onb = 0;
     applyTheme();
     toast('Todo borrado. ¡Como recién instalada!');
@@ -1307,7 +1432,25 @@ const actions = {
   },
   'route-row'(el) { state.ui.routeRows = [...new Set([...state.ui.routeRows, Number(el.dataset.v)])]; rerender(); },
   'log-open'(el, e) { e.preventDefault(); state.ui.logOpen = !el.closest('details').open; rerender(); },
-  'next-tip'() { state.ui.tip++; rerender(); },
+  'myev-add'() { myEventSheet(); },
+  async 'myev-save'() {
+    const val = (k) => ($(`[data-myev="${k}"]`)?.value || '').trim();
+    const title = val('title'); const date = val('date');
+    if (!title || !date) { toast('Pon al menos qué es y la fecha'); return; }
+    const url = val('url');
+    const ev = { id: uid(), title, date, end: val('end') && val('end') >= date ? val('end') : '', note: val('note'), url: /^https?:\/\//.test(url) ? url : '' };
+    state.settings.myEvents = [...(set().myEvents || []), ev];
+    await saveSettings(); closeSheet(); toast('Evento apuntado 📅'); rerender();
+  },
+  async 'myev-del'(el) {
+    if (!armed(el, '¿Seguro? Toca otra vez')) return;
+    state.settings.myEvents = (set().myEvents || []).filter((e) => e.id !== el.dataset.id);
+    await saveSettings(); rerender();
+  },
+  'news-sector'(el) {
+    Object.assign(state.ui, { gymDisc: el.dataset.kind === 'route' ? 'route' : 'boulder', gymSector: el.dataset.sector, gymCircuit: 'all', gymFilter: el.dataset.recent ? 'new' : 'all' });
+    go('#/sala');
+  },
   'set-mood'(el) { const v = Number(el.dataset.v); state.draft.mood = state.draft.mood === v ? null : v; saveDraftSoon(); rerender(); },
   'set-effort'(el) { state.draft.rpe = Number(el.dataset.v); saveDraftSoon(); rerender(); },
   'set-duration'(el) { state.draft.duration = Number(el.dataset.v); saveDraftSoon(); rerender(); },

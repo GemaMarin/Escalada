@@ -7,6 +7,10 @@ Funciona en el móvil, se puede instalar en la pantalla de inicio y funciona sin
 
 **Registrar una sesión en segundos:** Clase o Libre (con quién fuiste), y contadores por color de *conseguidos* e *intentados* («3 amarillos, 1 morado intentado»). Si te acuerdas de cuál era, puedes elegir el bloque concreto de la sala. Las notas se clasifican solas (técnica, cabeza, molestias…), en Inicio sale tu próximo reto y cada sesión se puede compartir como imagen.
 
+**Eventos y novedades:** eventos de Madrid publicados en la web del Sharma (se actualizan solos cada día), bloques y vías recién montados por sector, eventos apuntados a mano (p. ej. promociones vistas en Instagram) y enlace a su Instagram.
+
+**Logros por niveles:** constancia, conseguidos, a la primera, racha, colores, color completo… al completar un nivel aparece el siguiente y la app avisa con «¡Nuevo logro!».
+
 **Bloques concretos de la sala:** eliges Bloque o Vías, salen los bloques montados ahora en la sala (por color y sector) y para cada uno marcas *A la primera*, *Lo conseguí* o *Lo intenté*. Si no sabes cuál era, lo apuntas solo con el color. Cada bloque de la sala queda como **Conseguido**, **Intentando** o **Sin probar**, y en Inicio aparecen **Tus retos** (los que intentaste y siguen montados). Objetivo por defecto: 1 sesión a la semana.
 
 **Novedad v2 — Sala en directo (Sharma Climbing Madrid):** la pestaña *Sala* muestra los bloques y vías montados ahora mismo (sector, circuito, color de presa, número, fecha de apertura, novedades), con el plano de sectores y la foto del muro con la zona de cada bloque. Se registran con un toque (Flash / Encadenado / Proyecto) y la app enseña cuánto llevas de cada circuito (p. ej. «Verde 18/24»). Los datos vienen del widget público de Vertical-Life que enlaza la web de la sala; si no hay conexión se usa la última copia guardada.
@@ -58,6 +62,7 @@ js/charts.js        gráficos SVG y mapa corporal
 js/db.js            almacenamiento local (IndexedDB) y fotos
 js/demo.js          datos de ejemplo
 js/sharma.js        datos de la sala (Vertical-Life) y plano/topos
+scripts/update-sharma.mjs  genera data/sharma.json y data/events.json (GitHub Actions, cada día)
 js/icons.js         iconos SVG
 data/               copia de la sala para usar sin conexión
 sw.js               uso sin conexión

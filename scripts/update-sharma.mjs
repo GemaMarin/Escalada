@@ -7,6 +7,9 @@ import { writeFile } from 'node:fs/promises';
 const BASE = 'https://gyms.vertical-life.info';
 const GYM = 'sharma-climbing-madrid';
 const OUT = new URL('../data/sharma.json', import.meta.url);
+const OUT_EVENTS = new URL('../data/events.json', import.meta.url);
+const EVENTS_API = 'https://sharmaclimbing.com/wp-json/tribe/events/v1/events';
+const MADRID_CAT = 174; // categoría «Sharma Climbing Madrid» en la web de la sala
 const PREV = process.env.PREV_URL || 'https://gemamarin.github.io/Escalada/data/sharma.json';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -62,7 +65,26 @@ function topo(html, cls) {
   } catch { return null; }
 }
 
+const strip = (h) => decode(String(h || '').replace(/<[^>]+>/g, ' ').replace(/&#8217;/g, '’').replace(/&#8211;/g, '–').replace(/&nbsp;/g, ' ')).replace(/\s+/g, ' ').trim();
+
+// Eventos publicados en la web de la sala (pasados recientes y próximos).
+async function updateEvents() {
+  const from = new Date(Date.now() - 150 * 86400000).toISOString().slice(0, 10);
+  const to = new Date(Date.now() + 400 * 86400000).toISOString().slice(0, 10);
+  const url = `${EVENTS_API}?per_page=50&categories=${MADRID_CAT}&start_date=${from}&end_date=${to}`;
+  const data = JSON.parse(await get(url));
+  const events = (data.events || []).map((e) => ({
+    id: String(e.id), title: strip(e.title), start: e.start_date, end: e.end_date, allDay: !!e.all_day,
+    url: e.url, image: e.image?.sizes?.medium?.url || e.image?.url || null,
+    summary: strip(e.excerpt || e.description).slice(0, 260),
+    cats: (e.categories || []).map((c) => c.name).filter((n) => !/^Sharma Climbing/.test(n)),
+  }));
+  await writeFile(OUT_EVENTS, JSON.stringify({ fetchedAt: Date.now(), source: 'sharmaclimbing.com', events }));
+  console.log(`OK: ${events.length} eventos`);
+}
+
 const main = async () => {
+  try { await updateEvents(); } catch (e) { console.warn('Eventos:', e.message); }
   const html = await get(`${BASE}/${GYM}/iframe`);
   const boulders = parsePane(html, 'boulder');
   const routes = parsePane(html, 'route');
