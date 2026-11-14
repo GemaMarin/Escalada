@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Cuaderno de Escalada</title>
   <meta name="description" content="Registra tus sesiones de escalada en el rocódromo: bloques, vías, fotos, progreso y carga corporal.">
-  <meta name="theme-color" content="#ff6b35">
+  <meta name="theme-color" content="#faf6f1" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#121010" media="(prefers-color-scheme: dark)">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Escalada">
@@ -19,16 +20,16 @@
 </head>
 <body>
   <header class="appbar">
-    <a href="#/inicio" class="brand"><img src="icons/icon.svg" alt="" width="28" height="28"> <span>Cuaderno de Escalada</span></a>
-    <a href="#/ajustes" class="icon-btn" aria-label="Ajustes">⚙︎</a>
+    <a href="#/inicio" class="brand"><img src="icons/icon.svg" alt="" width="30" height="30"><span>Cuaderno<b>de escalada</b></span></a>
+    <a href="#/ajustes" class="icon-btn ghost" aria-label="Ajustes" data-icon="settings"></a>
   </header>
-  <main id="view" class="view"><p class="muted center">Cargando…</p></main>
+  <main id="view" class="view"><div class="boot"><img src="icons/icon.svg" alt="" width="64" height="64"></div></main>
   <nav class="tabbar" aria-label="Navegación principal">
-    <a href="#/inicio" data-tab="inicio"><span>🏠</span>Inicio</a>
-    <a href="#/historial" data-tab="historial"><span>📒</span>Historial</a>
-    <a href="#/nueva" data-tab="nueva" class="fab" aria-label="Nueva sesión"><span>＋</span></a>
-    <a href="#/progreso" data-tab="progreso"><span>📈</span>Progreso</a>
-    <a href="#/cuerpo" data-tab="cuerpo"><span>💪</span>Cuerpo</a>
+    <a href="#/inicio" data-tab="inicio"><span data-icon="home"></span>Inicio</a>
+    <a href="#/diario" data-tab="diario"><span data-icon="book"></span>Diario</a>
+    <a href="#/nueva" data-tab="nueva" class="fab" aria-label="Sesión de hoy"><span data-icon="plus"></span></a>
+    <a href="#/sala" data-tab="sala"><span data-icon="wall"></span>Sala</a>
+    <a href="#/progreso" data-tab="progreso"><span data-icon="chart"></span>Progreso</a>
   </nav>
   <dialog id="sheet" class="sheet-dialog"></dialog>
   <dialog id="lightbox" class="lightbox"></dialog>

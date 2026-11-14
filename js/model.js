@@ -1,21 +1,52 @@
 // Modelo de dominio: grados, etiquetas de estilo y su relación con el cuerpo.
 
-export const ROUTE_GRADES = ['4', '4+', '5a', '5a+', '5b', '5b+', '5c', '5c+', '6a', '6a+', '6b', '6b+',
+import { SHARMA_CIRCUITS } from './sharma.js';
+
+// Grados franceses de vía, tal y como los publica la sala.
+export const ROUTE_GRADES = ['4a', '4b', '4c', '5a', '5a+', '5b', '5b+', '5c', '5c+', '6a', '6a+', '6b', '6b+',
+  '6c', '6c+', '7a', '7a+', '7b', '7b+', '7c', '7c+', '8a', '8a+', '8b', '8b+', '8c', '8c+', '9a'];
+const OLD_ROUTE_GRADES = ['4', '4+', '5a', '5a+', '5b', '5b+', '5c', '5c+', '6a', '6a+', '6b', '6b+',
   '6c', '6c+', '7a', '7a+', '7b', '7b+', '7c', '7c+', '8a', '8a+', '8b', '8b+', '8c'];
 
-// Circuito de colores para bloque. Los gimnasios cambian sus colores y rangos:
-// se pueden editar desde Ajustes para que coincidan con los de la sala.
-export const DEFAULT_BOULDER_SCALE = [
-  { name: 'Verde', color: '#22c55e', approx: '4 – 5a' },
-  { name: 'Amarillo', color: '#facc15', approx: '5a – 5c' },
-  { name: 'Naranja', color: '#fb923c', approx: '5c – 6a+' },
-  { name: 'Azul', color: '#3b82f6', approx: '6a+ – 6b+' },
-  { name: 'Rojo', color: '#ef4444', approx: '6b+ – 6c+' },
-  { name: 'Rosa', color: '#ec4899', approx: '6c+ – 7a+' },
-  { name: 'Morado', color: '#8b5cf6', approx: '7a+ – 7b+' },
-  { name: 'Negro', color: '#1f2937', approx: '7b+ – 7c+' },
-  { name: 'Blanco', color: '#f8fafc', approx: '7c+ +' },
-];
+// Circuitos de bloque por defecto: los de Sharma Climbing Madrid (editables en Ajustes).
+export const DEFAULT_BOULDER_SCALE = SHARMA_CIRCUITS;
+const OLD_DEFAULT_NAMES = ['Verde', 'Amarillo', 'Naranja', 'Azul', 'Rojo', 'Rosa', 'Morado', 'Negro', 'Blanco'];
+const OLD_NAME_MAP = { Naranja: 'Amarillo', Rosa: 'Rojo' };
+
+// Migra datos de la versión 1 (otra escala de vías y circuitos genéricos).
+export function migrate(settings, sessions) {
+  if ((settings.dataVersion || 1) >= 2) return { settings, sessions, changed: false };
+  const oldScale = settings.boulderScale;
+  const wasOldDefault = !oldScale || (oldScale.length === OLD_DEFAULT_NAMES.length && oldScale.every((g, i) => g.name === OLD_DEFAULT_NAMES[i]));
+  const newScale = wasOldDefault ? SHARMA_CIRCUITS : oldScale;
+  const remapBoulder = (i) => {
+    if (!wasOldDefault) return i;
+    const name = OLD_DEFAULT_NAMES[i];
+    const target = OLD_NAME_MAP[name] || name;
+    const j = SHARMA_CIRCUITS.findIndex((g) => g.name === target);
+    return j >= 0 ? j : i;
+  };
+  const remapRoute = (i) => {
+    const label = OLD_ROUTE_GRADES[i];
+    const mapped = label === '4' ? '4a' : label === '4+' ? '4c' : label;
+    const j = ROUTE_GRADES.indexOf(mapped);
+    return j >= 0 ? j : i;
+  };
+  const out = sessions.map((s) => ({
+    ...s,
+    climbs: (s.climbs || []).map((c) => ({ ...c, grade: c.discipline === 'route' ? remapRoute(c.grade) : remapBoulder(c.grade) })),
+  }));
+  return { settings: { ...settings, boulderScale: newScale, scalePreset: wasOldDefault ? 'sharma' : settings.scalePreset, dataVersion: 2 }, sessions: out, changed: true };
+}
+
+export function boulderIndexByName(settings, name) {
+  return boulderScale(settings).findIndex((g) => g.name.toLowerCase() === (name || '').toLowerCase());
+}
+
+export const TRAINING = {
+  kilter: 'Kilter Board', campus: 'Campus board', hangboard: 'Suspensiones', gym: 'Gimnasio / fuerza',
+  core: 'Core', movilidad: 'Movilidad / yoga', autos: 'Autoseguros', velocidad: 'Velocidad',
+};
 
 export const FONT_SCALE = ['4', '4+', '5', '5+', '6A', '6A+', '6B', '6B+', '6C', '6C+', '7A', '7A+', '7B', '7B+', '7C', '7C+', '8A']
   .map((g, i, arr) => ({ name: g, color: gradeHue(i / (arr.length - 1)), approx: g }));
