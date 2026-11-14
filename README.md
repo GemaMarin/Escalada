@@ -5,7 +5,7 @@ Funciona en el móvil, se puede instalar en la pantalla de inicio y funciona sin
 
 ## Qué hace
 
-**Registrar una sesión en segundos:** Clase o Libre (con quién fuiste), y contadores por color de *conseguidos* e *intentados* («3 amarillos, 1 morado intentado»). Si te acuerdas de cuál era, puedes elegir el bloque concreto de la sala. Las notas se clasifican solas (técnica, cabeza, molestias…), en Inicio sale tu próximo reto y cada sesión se puede compartir como imagen.
+**Registrar una sesión en segundos:** Clase o Libre (con quién fuiste), y contadores por color de *conseguidos* e *intentados* («3 amarillos, 1 morado intentado»). Si te acuerdas de cuál era, puedes elegir el bloque concreto de la sala. Las notas se clasifican solas (técnica, cabeza, molestias…), en Inicio sale tu nivel, y al guardar una sesión aparece una imagen resumen para compartir o guardar. En Progreso, «Compartir» crea la imagen de «Mi progreso».
 
 **Navegación:** Inicio · Sala · ＋ · Progreso · Eventos. El perfil (foto, números, sesiones y ajustes) se abre tocando tu foto en Inicio.
 

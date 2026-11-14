@@ -929,3 +929,7 @@ dialog[open] ~ .toast { z-index: 2147483647; }
 
 @media (prefers-reduced-motion: reduce) { *, ::view-transition-old(root), ::view-transition-new(root) { animation: none !important; transition: none !important; } }
 .date-line.small-date { margin: -6px 0 0 !important; font-size: 14px; }
+
+.title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.share-mini { color: var(--accent); border-color: #fed7aa; background: linear-gradient(135deg, #fff7ed, #fff); }
+.share-sub { margin: 0 0 4px !important; }

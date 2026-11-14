@@ -7,7 +7,7 @@ import { icon } from './icons.js';
 import { makeDemo } from './demo.js';
 import * as P from './schedule.js';
 import * as N from './notes.js';
-import { sessionImage } from './shareimg.js';
+import { sessionImage, progressImage } from './shareimg.js';
 
 const DATA_VERSION = 4;
 const DEFAULT_SETTINGS = {
@@ -745,7 +745,7 @@ function armed(el, text) {
   return false;
 }
 
-async function shareSessionImage(id) {
+async function shareSessionImage(id, opts = {}) {
   const s = state.sessions.find((x) => x.id === id); if (!s) return;
   toast('Creando imagen…');
   const climbs = s.climbs || [];
@@ -763,17 +763,49 @@ async function shareSessionImage(id) {
     rows: Object.values(by).sort((a, b) => b.g - a.g),
     hardest: best ? { label: M.gradeLabel(best, set()), color: toHex(M.gradeColor(best, set())) } : null,
   });
-  const file = new File([blob], `escalada-${s.date}.png`, { type: 'image/png' });
+  showShareSheet(blob, `escalada-${s.date}.png`, opts.afterSave ? '¡Sesión guardada! 💪' : 'Tu sesión', opts.afterSave ? '¿Quieres compartir el resumen o guardarlo en tu móvil?' : '');
+}
+
+// Hoja con la imagen generada y botones para compartir o guardar.
+function showShareSheet(blob, filename, title, subtitle = '') {
+  const file = new File([blob], filename, { type: 'image/png' });
+  if (state.shareURL) URL.revokeObjectURL(state.shareURL);
   const url = URL.createObjectURL(blob);
-  state.shareFile = file;
+  state.shareURL = url; state.shareFile = file;
   openSheet(`<div class="sheet">
     <div class="grabber"></div>
-    <div class="sheet-head"><span></span><b>Tu sesión</b><button class="link" data-action="close-sheet" type="button">Cerrar</button></div>
-    <div class="sheet-body"><img class="share-preview" src="${url}" alt="Imagen de la sesión"></div>
+    <div class="sheet-head"><span></span><b>${esc(title)}</b><button class="link" data-action="close-sheet" type="button">Cerrar</button></div>
+    <div class="sheet-body">${subtitle ? `<p class="muted small center share-sub">${esc(subtitle)}</p>` : ''}<img class="share-preview" src="${url}" alt="Imagen resumen"></div>
     <div class="sheet-foot">
-      <a class="btn ghost" href="${url}" download="escalada-${s.date}.png">${icon('download')} Guardar</a>
+      <a class="btn ghost" href="${url}" download="${esc(filename)}">${icon('download')} Guardar</a>
       ${navigator.canShare?.({ files: [file] }) ? `<button class="btn primary" data-action="share-file">${icon('share')} Compartir</button>` : ''}
     </div></div>`);
+}
+
+// Imagen de «Mi progreso».
+async function shareProgressImage() {
+  toast('Creando imagen…');
+  const all = state.sessions; const real = realSessions();
+  const climbs = I.allClimbs(all);
+  const scale = M.boulderScale(set());
+  const regular = scale.map((g, i) => ({ ...g, i })).filter((g) => !g.joker);
+  const bSent = climbs.filter((c) => c.discipline === 'boulder' && M.isSent(c));
+  const best = bSent.length ? Math.max(...bSent.map((c) => c.grade)) : null;
+  const cur = best != null ? regular.filter((g) => g.i <= best).pop() : null;
+  const next = cur ? regular.find((g) => g.i > cur.i) : null;
+  const first = real.length ? I.sortSessions(real)[real.length - 1].date : (all.length ? I.sortSessions(all)[all.length - 1].date : null);
+  const weeks = I.weeklyProgress(all, 'boulder', 10);
+  const top = Math.max(1, ...weeks.map((w) => w.max ?? 0)) + 1;
+  const blob = await progressImage({
+    name: set().name, gym: set().gym, avatar: state.avatarURL,
+    since: first ? `Escalando desde ${I.parseDate(first).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}` : '',
+    level: cur ? { name: cur.name, color: toHex(cur.color), num: regular.findIndex((g) => g.i === cur.i) + 1, next: next?.name } : null,
+    stats: [[real.length, 'sesiones'], [climbs.filter(M.isSent).length, 'conseguidos'], [climbs.filter((c) => statusOf(c.result) === 'flash').length, 'a la primera'], [I.weekStreak(real), 'semanas seguidas']],
+    rowsTitle: 'Bloques conseguidos por color',
+    rows: regular.map((g) => ({ label: g.name, color: toHex(g.color), sent: bSent.filter((c) => c.grade === g.i).length })).filter((r) => r.sent).reverse(),
+    weeks: weeks.map((w) => ({ color: w.max != null ? toHex(M.gradeColor({ discipline: 'boulder', grade: w.max }, set())) : null, h: w.max != null ? (w.max + 1) / top : 0 })),
+  });
+  showShareSheet(blob, `mi-progreso-${I.today()}.png`, 'Mi progreso');
 }
 
 function climbRow(c) {
@@ -1125,7 +1157,7 @@ function viewProgress() {
   const tabs = seg('prog-tab', tab, { resumen: 'Resumen', logros: 'Logros' });
   if (!state.sessions.length) return `<h1 class="page-title">Progreso</h1>${tabs}${emptyState('Aún no hay datos', 'Apunta tu primera sesión y aquí verás cómo mejoras.', '<a class="btn primary" href="#/nueva">Registrar sesión</a>', 'chart')}`;
   const body = tab === 'logros' ? progAchievements() : progSummary();
-  return `<h1 class="page-title">Progreso</h1>${tabs}${body}`;
+  return `<div class="title-row"><h1 class="page-title">Progreso</h1><button class="btn sm share-mini" data-action="share-progress">${icon('camera')} Compartir</button></div>${tabs}${body}`;
 }
 
 function progSummary() {
@@ -1321,6 +1353,7 @@ async function saveSession() {
   if (isNew || fresh) celebrate();
   toast(fresh ? `🏅 ¡Nuevo logro! ${fresh.title} · ${fresh.done}` : isNew ? '¡Sesión guardada! 💪' : 'Cambios guardados');
   go(`#/sesion/${session.id}`);
+  if (isNew && (session.climbs || []).length) setTimeout(() => { if (route() === 'perfil') shareSessionImage(session.id, { afterSave: true }); }, 900);
 }
 
 async function addPhotos(files) {
@@ -1498,6 +1531,7 @@ const actions = {
   async theme(el) { state.settings.theme = el.dataset.v; applyTheme(); await saveSettings(); rerender(); },
   photo(el) { openPhoto(el.dataset.id); },
   'share-img'(el) { shareSessionImage(el.dataset.id); },
+  'share-progress'() { shareProgressImage(); },
   async 'share-file'() {
     try { await navigator.share({ files: [state.shareFile], text: '🧗‍♀️ Mi sesión de escalada' }); } catch { /* cancelado */ }
   },
