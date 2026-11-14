@@ -964,3 +964,8 @@ dialog[open] ~ .toast { z-index: 2147483647; }
 .og-row b { flex: 1; }
 .og-dots { display: flex; gap: 3px; }
 .og-dots i { width: 12px; height: 12px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .15); }
+
+.when-card { display: grid; gap: 10px; }
+.when-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.when-chips .chip { padding: 10px 16px; font-size: 15px; }
+.when-chips .chip .ic { width: 16px; height: 16px; }

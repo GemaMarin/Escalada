@@ -682,7 +682,7 @@ function viewProfile() {
       <a class="card prof-link" href="#/progreso" data-action="prog-tab" data-v="resumen">${icon('chart')}<span><b>Tu progreso</b><small>Nivel, colores y semanas</small></span>${icon('chevron', 'muted')}</a>
       <a class="card prof-link" href="#/progreso" data-action="prog-tab" data-v="logros">${icon('trophy')}<span><b>Tus logros</b><small>${got} conseguidos</small></span>${icon('chevron', 'muted')}</a>
     </div>
-    <h2 class="section-title">Mis sesiones</h2>
+    <div class="section-head"><h2 class="section-title">Mis sesiones</h2><button class="link" data-action="past-session">${icon('plus')} Añadir sesión pasada</button></div>
     ${historyBody()}
     ${looseSection()}`;
 }
@@ -872,7 +872,12 @@ function viewEditor(editId) {
   return `<div class="topline"><button class="back" data-action="cancel-draft">${icon('back')} ${d.isNew ? 'Descartar' : 'Cancelar'}</button>
 </div>
     <h1 class="page-title">${d.isNew ? `Sesión ${esc(P.sessionOf(d.date))}` : 'Editar sesión'}</h1>
-    <label class="date-line">${icon('calendar')} <span>${esc(dateLabel)}</span> <b>Cambiar</b><input type="date" data-field="date" value="${d.date}" max="${I.today()}" class="hidden-date"></label>
+    <div class="card when-card"><b>¿Cuándo fue?</b>
+      <div class="when-chips">
+        <button class="chip ${d.date === I.today() ? 'on' : ''}" data-action="set-date" data-v="${I.today()}">Hoy</button>
+        <button class="chip ${d.date === I.toISO(new Date(Date.now() - 86400000)) ? 'on' : ''}" data-action="set-date" data-v="${I.toISO(new Date(Date.now() - 86400000))}">Ayer</button>
+        <label class="chip ${d.date < I.toISO(new Date(Date.now() - 86400000)) ? 'on' : ''}">${icon('calendar')} ${d.date < I.toISO(new Date(Date.now() - 86400000)) ? esc(cap(dateLabel)) : 'Otro día'}<input type="date" data-field="date" value="${d.date}" max="${I.today()}" class="hidden-date"></label>
+      </div></div>
 
     <div class="kind-pick">
       <button class="kind ${d.kind !== 'free' ? 'on' : ''}" data-action="set-kind" data-v="class"><span>🎓</span><b>Clase</b></button>
@@ -1663,7 +1668,14 @@ const actions = {
     go(back);
   },
 
-  'set-kind'(el) { state.draft.kind = el.dataset.v; if (el.dataset.v === 'class') state.draft.where = 'sharma'; saveDraftSoon(); rerender(); },
+  'set-date'(el) { applyDraftDate(el.dataset.v); },
+  'past-session'() {
+    const d = ensureDraft();
+    if (d.climbs.length && d.date === I.today()) { toast('Tienes una sesión abierta: cambia su fecha en «¿Cuándo fue?»'); go('#/nueva'); return; }
+    applyDraftDate(I.toISO(new Date(Date.now() - 86400000)), false);
+    go('#/nueva'); toast('Elige la fecha en «¿Cuándo fue?»');
+  },
+  'set-kind'(el) { state.draft.kind = el.dataset.v; state.draft.kindManual = true; if (el.dataset.v === 'class') state.draft.where = 'sharma'; saveDraftSoon(); rerender(); },
   'set-where'(el) {
     const d = state.draft; d.where = el.dataset.v;
     if (d.where === 'other' && d.climbs.some((c) => c.vlId)) toast('Los bloques concretos del Sharma se quitan al cambiar de rocódromo');
@@ -1864,6 +1876,15 @@ function addWith(name) {
   saveDraftSoon(); rerender();
 }
 
+// Cambia la fecha del borrador y ajusta Clase/Libre según tus días (si no lo elegiste tú).
+function applyDraftDate(iso, redraw = true) {
+  const d = state.draft; if (!d || !iso) return;
+  d.date = iso;
+  if (!d.kindManual) { d.kind = P.isPlannedDay(iso, set()) ? 'class' : 'free'; if (d.kind === 'class') d.where = 'sharma'; }
+  saveDraftSoon(); haptic();
+  if (redraw) rerender();
+}
+
 async function addExtraDate(iso) {
   if (!iso) return;
   state.settings.extraDates = [...new Set([...(set().extraDates || []), iso])].filter((d) => d >= I.today()).sort();
@@ -1921,7 +1942,7 @@ function onInput(e) {
 async function onChange(e) {
   const el = e.target;
   if (el.dataset.field === 'date' && state.draft) {
-    if (el.value) { state.draft.date = el.value; saveDraftSoon(); rerender(); }
+    if (el.value && el.value <= I.today()) applyDraftDate(el.value);
     return;
   }
   if (el.dataset.circEq != null && state.circ) {
