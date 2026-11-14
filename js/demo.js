@@ -66,7 +66,8 @@ export function makeDemo(settings, gym) {
     }
     const rpe = 5 + Math.floor(rnd() * 4);
     sessions.push({
-      id: uid(), demo: true, date: toISO(day), type, duration: 60 + 15 * Math.floor(rnd() * 6), rpe,
+      id: uid(), demo: true, date: toISO(day), type, kind: day.getDay() === 4 ? 'class' : 'free', where: 'sharma', gym: 'Sharma Climbing Madrid',
+      with: day.getDay() !== 4 && rnd() < 0.5 ? [pick(['Gema', 'Marta', 'Lucía'])] : [], duration: 60 + 15 * Math.floor(rnd() * 6), rpe,
       mood: Math.min(4, Math.max(0, Math.round(2 + rnd() * 2.4 - (rpe > 7 ? 1 : 0)))),
       notes: rnd() < 0.3 ? pick(['Muy buenas sensaciones, pies precisos.', 'Dedos algo cansados, he parado antes.', 'Sesión con amigas y algún bloque nuevo.', 'Han reequipado la cueva, ¡qué bloques más chulos!']) : '',
       activities: rnd() < 0.25 ? [pick(['kilter', 'campus', 'hangboard', 'core'])] : [],
