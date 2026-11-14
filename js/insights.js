@@ -251,8 +251,9 @@ function maxStreakEver(sessions) {
   return best;
 }
 
-export function achievements(sessions, photos, extra = {}) {
-  const climbs = allClimbs(sessions);
+export function achievements(allSessions, photos, extra = {}) {
+  const climbs = allClimbs(allSessions);
+  const sessions = allSessions.filter((s) => !s.loose);
   const sent = climbs.filter(isSent);
   const months = {};
   sessions.forEach((s) => { months[s.date.slice(0, 7)] = (months[s.date.slice(0, 7)] || 0) + 1; });
@@ -286,7 +287,7 @@ export function achievements(sessions, photos, extra = {}) {
   families.push(
     { key: 'sala', icon: '🧱', title: 'Bloques de la sala', value: new Set(sent.filter((c) => c.vlId).map((c) => c.vlId)).size, tiers: [1, 5, 15, 30, 60, 100], unit: (n) => `${n} ${n === 1 ? 'bloque concreto' : 'bloques concretos'} de la sala` },
     { key: 'circuito', icon: '🏆', title: 'Color completo', value: extra.completeCircuits || 0, tiers: [1, 2, 3, 4], unit: (n) => `Completa ${n === 1 ? 'un color entero' : `${n} colores enteros`} de la sala`, doneUnit: (n) => `${n === 1 ? 'Un color entero' : `${n} colores enteros`} de la sala` },
-    { key: 'persistente', icon: '💪', title: 'Persistente', value: sentProjects(sessions).length, tiers: [1, 5, 10, 25], unit: (n) => `Consigue ${n === 1 ? 'un bloque' : `${n} bloques`} que habías intentado otro día`, doneUnit: (n) => `${n} ${n === 1 ? 'bloque que se te resistía' : 'bloques que se te resistían'}` },
+    { key: 'persistente', icon: '💪', title: 'Persistente', value: sentProjects(allSessions).length, tiers: [1, 5, 10, 25], unit: (n) => `Consigue ${n === 1 ? 'un bloque' : `${n} bloques`} que habías intentado otro día`, doneUnit: (n) => `${n} ${n === 1 ? 'bloque que se te resistía' : 'bloques que se te resistían'}` },
     { key: 'amigas', icon: '👯', title: 'En compañía', value: sessions.filter((s) => (s.with || []).length).length, tiers: [1, 5, 10, 25], unit: (n) => `${n} ${n === 1 ? 'sesión' : 'sesiones'} con amigas` },
     { key: 'fotos', icon: '📸', title: 'Fotógrafa', value: photos || 0, tiers: [1, 5, 20, 50], unit: (n) => `${n} ${n === 1 ? 'foto' : 'fotos'}` },
   );
