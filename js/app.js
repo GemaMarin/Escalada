@@ -255,7 +255,7 @@ function sessionCard(s) {
     <div class="sc-date"><b>${I.parseDate(s.date).getDate()}</b><span>${I.fmtDate(s.date, { month: 'short' }).replace('.', '')}</span></div>
     <div class="sc-main">
       <div class="sc-title">${esc(titleOf(s))}${s.mood != null ? ` <span class="mood-i">${M.MOODS[s.mood]}</span>` : ''}</div>
-      <div class="sc-meta">${climbs.length ? `${plural(sent, 'conseguido', 'conseguidos')}${tried ? ` · ${tried} intentado${tried > 1 ? 's' : ''}` : ''}` : 'Sin bloques apuntados'}${(s.with || []).length ? ` · con ${esc(s.with.join(', '))}` : ''}</div>
+      <div class="sc-meta">${climbs.length ? `${plural(sent, 'conseguido', 'conseguidos')}${tried ? ` · ${tried} intentado${tried > 1 ? 's' : ''}` : ''}` : 'Sin bloques apuntados'}${(s.with || []).length ? ` · con ${esc(s.with.join(', '))}` : s.solo ? ' · sola' : ''}</div>
       ${top.length ? `<div class="sc-grades">${top.map((c) => `<span class="dot${M.isSent(c) ? '' : ' open'}" style="--g:${M.gradeColor(c, set())}"></span>`).join('')}</div>` : ''}
     </div>
     ${photos[0] ? `<img class="sc-thumb" src="${photoURL(photos[0].id)}" alt="">` : `<span class="sc-go">${icon('chevron')}</span>`}
@@ -523,7 +523,7 @@ function viewDetail(id) {
       <a class="btn sm" href="#/editar/${s.id}">${icon('edit')} Editar</a></div>
     <p class="eyebrow">${esc(date)}</p>
     <h1 class="page-title">${esc(titleOf(s))}${s.mood != null ? ` ${M.MOODS[s.mood]}` : ''}</h1>
-    ${(s.with || []).length ? `<p class="with-line">👯 Con ${esc(s.with.join(', '))}</p>` : ''}
+    ${(s.with || []).length ? `<p class="with-line">👯 Con ${esc(s.with.join(', '))}</p>` : s.solo ? '<p class="with-line">🙋‍♀️ Sola</p>' : ''}
     <section class="kpis three">
       ${kpi(sent.length, 'conseguidos')}
       ${kpi(flashes, 'a la primera')}
@@ -559,7 +559,7 @@ async function shareSessionImage(id) {
   const blob = await sessionImage({
     name: set().name, title: titleOf(s).replace(' · ', ' de '), gym: set().gym,
     date: I.parseDate(s.date).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' }),
-    with: (s.with || []).join(', '), mood: s.mood != null ? M.MOODS[s.mood] : '',
+    with: (s.with || []).join(', '), solo: !!s.solo && !(s.with || []).length, mood: s.mood != null ? M.MOODS[s.mood] : '',
     sent: sent.length, flash: climbs.filter((c) => statusOf(c.result) === 'flash').length, tried: climbs.length - sent.length,
     rowsTitle: disc === 'route' ? 'Vías por grado' : 'Bloques por color',
     rows: Object.values(by).sort((a, b) => b.g - a.g),
@@ -637,7 +637,7 @@ function viewEditor(editId) {
       <button class="kind ${d.kind === 'free' ? 'on' : ''}" data-action="set-kind" data-v="free"><span>🧗‍♀️</span><b>Libre</b></button>
     </div>
     ${d.kind === 'free' ? `<div class="card with-card"><b>¿Con quién has ido?</b>
-      <div class="chips">${d.with.map((f) => `<button class="chip on" data-action="with-del" data-v="${esc(f)}">${esc(f)} ${icon('close')}</button>`).join('')}
+      <div class="chips"><button class="chip ${d.solo ? 'on' : ''}" data-action="with-solo">🙋‍♀️ Sola</button>${d.with.map((f) => `<button class="chip on" data-action="with-del" data-v="${esc(f)}">${esc(f)} ${icon('close')}</button>`).join('')}
         ${friends.map((f) => `<button class="chip" data-action="with-add" data-v="${esc(f)}">＋ ${esc(f)}</button>`).join('')}</div>
       <div class="with-input"><input data-with placeholder="Escribe un nombre" enterkeyhint="done"><button class="btn sm" data-action="with-add-input">Añadir</button></div></div>` : ''}
 
@@ -912,7 +912,7 @@ function gymMapCard(sectors) {
   const withTopo = known.map((s) => ({ ...s, topo: state.gymSectors[s.id] })).filter((s) => s.topo);
   return `<div class="card map-card">
     ${withTopo.length ? S.sectorMapHTML(withTopo, activeId) : missing.length ? '<div class="skel tall"></div>' : '<p class="muted small">El plano de la sala aún no está disponible.</p>'}
-    ${withTopo.length ? '<p class="muted small">Toca un sector del plano para ver solo sus bloques.</p>' : ''}</div>`;
+  </div>`;
 }
 
 // ---------------- Progreso ----------------
@@ -1074,6 +1074,7 @@ async function saveSession() {
   session.type = discs.size > 1 ? 'mixed' : discs.has('route') ? 'route' : discs.has('boulder') ? 'boulder' : (state.ui.logDisc || 'boulder');
   if (!session.rpe) session.rpe = 6;
   session.topics = N.topicsOf(session.notes);
+  if (session.kind !== 'free') { session.with = []; session.solo = false; }
   session.createdAt ||= Date.now();
   session.updatedAt = Date.now();
   const climbIds = new Set(session.climbs.map((c) => c.id));
@@ -1287,6 +1288,7 @@ const actions = {
   },
   'set-kind'(el) { state.draft.kind = el.dataset.v; saveDraftSoon(); rerender(); },
   'with-add'(el) { addWith(el.dataset.v); },
+  'with-solo'() { const d = state.draft; d.solo = !d.solo; if (d.solo) d.with = []; saveDraftSoon(); rerender(); },
   'with-add-input'() { const inp = $('[data-with]'); addWith(inp?.value); },
   'with-del'(el) { state.draft.with = state.draft.with.filter((f) => f !== el.dataset.v); saveDraftSoon(); rerender(); },
   cnt(el) {
@@ -1388,7 +1390,7 @@ const actions = {
 function addWith(name) {
   const n = (name || '').trim().replace(/\s+/g, ' ').slice(0, 40);
   if (!n) return;
-  const d = state.draft; d.with = [...new Set([...(d.with || []), n])];
+  const d = state.draft; d.with = [...new Set([...(d.with || []), n])]; d.solo = false;
   saveDraftSoon(); rerender();
 }
 

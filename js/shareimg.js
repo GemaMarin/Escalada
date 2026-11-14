@@ -39,7 +39,7 @@ export async function sessionImage(d) {
   ctx.fillStyle = '#fff'; ctx.font = '800 76px Outfit, system-ui, sans-serif';
   ctx.fillText(d.title, 100, 220);
   ctx.font = '500 36px Outfit, system-ui, sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.9)';
-  ctx.fillText(d.date + (d.with ? ` · con ${d.with}` : ''), 100, 278);
+  ctx.fillText(d.date + (d.with ? ` · con ${d.with}` : d.solo ? ' · sola' : ''), 100, 278);
   if (d.mood) { ctx.font = '110px system-ui, "Apple Color Emoji", "Segoe UI Emoji", sans-serif'; ctx.textAlign = 'right'; ctx.fillText(d.mood, W - 100, 230); ctx.textAlign = 'left'; }
 
   // Números grandes
