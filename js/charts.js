@@ -154,3 +154,36 @@ export function textOn(color) {
     .map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
   return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.45 ? '#111827' : '#fff';
 }
+
+// Barras semanales: altura = lo más difícil conseguido esa semana, con su color.
+export function weeklyBars(data, labelFor, colorFor, maxIndex) {
+  const W = 340, H = 170, L = 6, R = 6, T = 26, B = 24;
+  if (!data.some((d) => d.max != null)) return '<p class="muted small">Cuando registres sesiones verás aquí tu nivel de cada semana.</p>';
+  const bw = (W - L - R) / data.length;
+  const top = Math.max(maxIndex, ...data.map((d) => d.max ?? 0)) + 1;
+  let out = '';
+  data.forEach((d, i) => {
+    const x = L + i * bw + 3; const w = bw - 6;
+    if (d.max == null) {
+      out += `<rect x="${x}" y="${H - B - 4}" width="${w}" height="4" rx="2" fill="var(--surface-2)"/>`;
+    } else {
+      const h = Math.max(10, (H - T - B) * ((d.max + 1) / top));
+      const c = colorFor(d.max);
+      out += `<g><title>Semana del ${shortWeek(d.week)}: ${esc(labelFor(d.max))} · ${d.count} conseguidos</title>
+        <rect x="${x}" y="${H - B - h}" width="${w}" height="${h}" rx="6" fill="${c}" stroke="rgb(0 0 0 / .12)"/>
+        ${i === data.length - 1 || d.max >= Math.max(...data.map((z) => z.max ?? -1)) ? `<text x="${x + w / 2}" y="${H - B - h - 6}" text-anchor="middle" class="axis strong">${esc(labelFor(d.max))}</text>` : ''}</g>`;
+    }
+    if (i % 3 === (data.length - 1) % 3) out += `<text x="${x + w / 2}" y="${H - 6}" text-anchor="middle" class="axis">${shortWeek(d.week)}</text>`;
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" class="chart" role="img" aria-label="Nivel por semana">${out}</svg>`;
+}
+
+// Conseguidos e intentados por color/grado.
+export function colorBars(rows) {
+  const max = Math.max(...rows.map((r) => r.sent + r.tried), 1);
+  return `<div class="cbars">${rows.map((r) => `<div class="cbar">
+      <span class="grade sm" style="${gradeStyle(r.color)}">${esc(r.label)}</span>
+      <div class="cbar-track"><i style="width:${(r.sent / max) * 100}%;background:${r.color}"></i><i class="tried" style="width:${(r.tried / max) * 100}%;--c:${r.color}"></i></div>
+      <small>${r.sent}${r.tried ? ` <em>+${r.tried}</em>` : ''}</small></div>`).join('')}</div>
+    <div class="legend"><span><i style="background:var(--text)"></i>Conseguidos</span><span><i class="tried-k"></i>Intentados</span></div>`;
+}

@@ -194,28 +194,6 @@ export function buildInsights(sessions, settings) {
     else if (r < 0.6 && sorted.length > 4) out.push({ icon: '🌱', tone: 'info', title: 'Semana más tranquila de lo habitual', text: 'Buen momento para recuperar… o para volver con energía a tus proyectos.' });
   }
 
-  // Dedos
-  const recent = sessions.filter((s) => daysBetween(s.date, now) < 28);
-  const bl = bodyLoad(recent.length ? recent : sessions, settings);
-  if (bl.sum > 0) {
-    const fingers = bl.total.dedos / bl.sum;
-    if (fingers > 0.3) out.push({ icon: '🤞', tone: 'warn', title: `Los dedos se llevan el ${Math.round(fingers * 100)}% de la carga`, text: 'Mucha regleta o agujero últimamente. Calienta progresivamente y alterna con sesiones de romos, placa o volúmenes.' });
-    const [topPart] = Object.entries(bl.total).sort((a, b) => b[1] - a[1]);
-    out.push({ icon: '💪', tone: 'info', title: `Zona más trabajada: ${BODY_PARTS[topPart[0]].toLowerCase()}`, text: `En las últimas 4 semanas ${BODY_PARTS[topPart[0]].toLowerCase()} acumulan el ${Math.round(topPart[1] / bl.sum * 100)}% del esfuerzo estimado.` });
-  }
-
-  // Estilos
-  const ts = tagStats(sessions).filter((t) => t.total >= 3);
-  if (ts.length >= 2) {
-    const weakest = [...ts].sort((a, b) => a.rate - b.rate)[0];
-    const strongest = [...ts].sort((a, b) => b.rate - a.rate)[0];
-    if (strongest.rate - weakest.rate > 0.15) {
-      out.push({ icon: '🎯', tone: 'info', title: `Tu punto fuerte: ${strongest.label.toLowerCase()}`, text: `Encadenas el ${Math.round(strongest.rate * 100)}% de lo que pruebas con ${strongest.label.toLowerCase()}. En ${weakest.label.toLowerCase()} solo el ${Math.round(weakest.rate * 100)}%: ahí está tu margen de mejora.` });
-    }
-    const forgotten = ts.filter((t) => daysBetween(t.last, now) >= 14).sort((a, b) => b.total - a.total)[0];
-    if (forgotten) out.push({ icon: '🔄', tone: 'info', title: `Hace ${daysBetween(forgotten.last, now)} días sin ${forgotten.label.toLowerCase()}`, text: 'Variar estilos evita estancarse y reparte la carga entre tendones distintos.' });
-  }
-
   // Nuevo máximo
   const climbs = allClimbs(sessions);
   for (const disc of ['boulder', 'route']) {
@@ -237,18 +215,16 @@ export function buildInsights(sessions, settings) {
     const atMax = sent.filter((c) => c.grade === max).length;
     const below = sent.filter((c) => c.grade === max - 1).length;
     const label = (g) => gradeLabel({ discipline: disc, grade: g }, settings);
-    if (atMax >= 3 && below >= 5) out.push({ icon: '🚀', tone: 'good', title: `Pirámide sólida: prueba ${label(max + 1)}`, text: `Ya tienes ${atMax} en ${label(max)} y ${below} en ${label(max - 1)}. Estás lista para proyectar el siguiente nivel.` });
-    else if (max > 0) out.push({ icon: '🧱', tone: 'info', title: `Consolidar ${label(max)}`, text: `Llevas ${atMax} en ${label(max)}${max > 0 ? ` y ${below} en ${label(max - 1)}` : ''}. Una pirámide típica pide ~3 y ~6 antes de saltar de grado.` });
+    if (atMax >= 3 && below >= 5) out.push({ icon: '🚀', tone: 'good', title: `¡Lista para probar ${label(max + 1)}!`, text: `Ya has conseguido ${atMax} de ${label(max)} y ${below} de ${label(max - 1)}. El siguiente color te está esperando.` });
+    else if (max > 0) out.push({ icon: '🧱', tone: 'info', title: `Afianza el ${label(max)}`, text: `Llevas ${atMax} de ${label(max)}. Consigue unos cuantos más y estarás lista para el siguiente.` });
   }
 
   const flashes = climbs.filter((c) => c.result === 'flash' || c.result === 'onsight').length;
   if (climbs.length >= 15) {
     const fr = flashes / climbs.length;
-    if (fr > 0.6) out.push({ icon: '⚡', tone: 'info', title: `Flasheas el ${Math.round(fr * 100)}%`, text: 'Quizá estés escalando en tu zona de confort. Mete algún bloque que te cueste 5+ intentos.' });
+    if (fr > 0.6) out.push({ icon: '⚡', tone: 'info', title: `El ${Math.round(fr * 100)}% te sale a la primera`, text: '¡Genial! Prueba algún bloque del color siguiente: así es como se mejora.' });
   }
 
-  const proj = openProjects(sessions, settings);
-  if (proj.length) out.push({ icon: '📌', tone: 'info', title: `${proj.length} proyecto${proj.length > 1 ? 's' : ''} abierto${proj.length > 1 ? 's' : ''}`, text: proj.slice(0, 3).map((p) => `${p.name} (${p.label})`).join(', ') });
 
   // Mejor día
   if (sessions.length >= 8) {
@@ -272,20 +248,17 @@ export function achievements(sessions, photos) {
   const sent = climbs.filter(isSent);
   const months = {};
   sessions.forEach((s) => { months[s.date.slice(0, 7)] = (months[s.date.slice(0, 7)] || 0) + 1; });
-  const tags = new Set(sent.flatMap(climbTags));
   const list = [
     ['🎒', 'Primera sesión', 'Registra tu primera sesión', sessions.length >= 1],
     ['🔟', 'Diez sesiones', '10 sesiones registradas', sessions.length >= 10],
-    ['💯', 'Cien escaladas', '100 bloques o vías encadenados', sent.length >= 100],
-    ['⚡', 'Primer flash', 'Encadena algo a la primera', climbs.some((c) => c.result === 'flash')],
-    ['👁', 'A vista', 'Encadena una vía a vista', climbs.some((c) => c.result === 'onsight')],
-    ['🪢', 'Cuerdista', 'Primera vía de primera', sent.some((c) => c.discipline === 'route' && c.ropeMode === 'lead')],
-    ['🦇', 'Murciélago', 'Encadena un techo', tags.has('techo')],
-    ['🦶', 'Pies de seda', '10 placas encadenadas', sent.filter((c) => (c.styles || []).includes('placa')).length >= 10],
+    ['💯', 'Cien', '100 bloques o vías conseguidos', sent.length >= 100],
+    ['⚡', 'A la primera', 'Consigue un bloque al primer intento', climbs.some((c) => c.result === 'flash' || c.result === 'onsight')],
+    ['🪢', 'Cuerdista', 'Consigue tu primera vía', sent.some((c) => c.discipline === 'route')],
+    ['🌈', 'Arcoíris', 'Consigue bloques de 4 colores distintos', new Set(sent.filter((c) => c.discipline === 'boulder').map((c) => c.grade)).size >= 4],
+    ['🎯', 'Constante', '5 sesiones registradas', sessions.length >= 5],
     ['🔥', 'Racha de 4', '4 semanas seguidas escalando', weekStreak(sessions) >= 4],
-    ['📆', 'Mes intenso', '8 sesiones en un mes', Object.values(months).some((n) => n >= 8)],
-    ['📌', 'Proyectista', 'Encadena un proyecto de varias sesiones', sentProjects(sessions).length >= 1],
-    ['🧩', 'Todoterreno', 'Encadena 4 inclinaciones distintas', ['placa', 'vertical', 'desplome', 'techo'].every((t) => tags.has(t))],
+    ['📆', 'Mes intenso', '6 sesiones en un mes', Object.values(months).some((n) => n >= 6)],
+    ['💪', 'Persistente', 'Consigue un bloque que habías intentado otro día', sentProjects(sessions).length >= 1],
     ['📸', 'Fotógrafa', 'Sube 5 fotos', (photos || 0) >= 5],
     ['🏔', 'Maratón', 'Una sesión de 3 h o más', sessions.some((s) => s.duration >= 180)],
   ];
