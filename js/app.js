@@ -5,10 +5,12 @@ import * as C from './charts.js';
 import * as S from './sharma.js';
 import { icon } from './icons.js';
 import { makeDemo } from './demo.js';
+import * as P from './schedule.js';
 
 const DEFAULT_SETTINGS = {
   key: 'settings', name: '', gym: S.GYM.name, weeklyGoal: 3,
   boulderScale: M.DEFAULT_BOULDER_SCALE, scalePreset: 'sharma', dataVersion: 2, liveGym: true,
+  schedule: { days: [4], time: '19:00' }, extraDates: [], skipped: [],
 };
 
 const state = {
@@ -44,6 +46,11 @@ async function init() {
     await db.put('settings', state.settings);
     if (state.sessions.length) await db.putMany('sessions', state.sessions);
     if (draft?.value) draft.value = M.migrate({ dataVersion: 1, boulderScale: settings?.boulderScale }, [draft.value]).sessions[0];
+  }
+  if (!state.settings.planSince) {
+    const d = new Date(); d.setDate(d.getDate() - 7);
+    state.settings.planSince = I.toISO(d);
+    if (settings) await db.put('settings', state.settings);
   }
   photos.forEach((p) => state.photos.set(p.id, p));
   if (draft?.value) state.draft = { newPhotos: [], removedPhotos: [], activities: [], ...draft.value };
@@ -192,47 +199,79 @@ function viewHome() {
   const goal = set().weeklyGoal || 3;
   const streak = I.weekStreak(s);
   const pending = state.draft?.isNew ? state.draft : state.stash;
-  const st = I.summary(s, set());
   const insights = I.buildInsights(s, set());
-  const recent = I.sortSessions(s).slice(0, 3);
-  const photos = [...state.photos.values()].sort((a, b) => b.createdAt - a.createdAt).slice(0, 10);
-  const ach = I.achievements(s, state.photos.size);
-  const doneAch = ach.filter((a) => a.done);
+  const last = I.sortSessions(s)[0];
   const hello = now.getHours() < 13 ? 'Buenos días' : now.getHours() < 21 ? 'Buenas tardes' : 'Buenas noches';
+  const plan = pending ? null : P.planState(set(), s, state.draft);
   const live = pending ? `<a class="live-card" href="#/nueva">
       <span class="pulse"></span>
       <div><b>Sesión en curso</b><small>${plural(pending.climbs.length, 'escalada', 'escaladas')}${pending.startedAt ? ' · <span data-timer></span>' : ''}</small></div>
       <span class="btn sm light">Continuar</span></a>` : '';
+  const planCard = plan ? planCardHTML(plan) : '';
   return `<header class="home-head">
       <div><p class="eyebrow">${esc(now.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' }))}</p>
       <h1>${hello}${name ? `, ${esc(name)}` : ''}</h1></div>
       <a href="#/ajustes" class="avatar" aria-label="Ajustes">${esc((name || '🧗').slice(0, 1).toUpperCase())}</a>
     </header>
-    ${live}
+    ${live}${planCard}
     <section class="hero">
       <div class="hero-ring">${ring(weekSessions, goal)}<div class="hero-ring-v"><b>${weekSessions}</b><small>de ${goal}</small></div></div>
       <div class="hero-txt">
         <p class="hero-k">Esta semana</p>
-        <h2>${weekSessions >= goal ? '¡Objetivo cumplido! 🎉' : weekSessions ? `Te ${goal - weekSessions === 1 ? 'queda 1 sesión' : `quedan ${goal - weekSessions} sesiones`}` : 'Aún sin escalar'}</h2>
-        <div class="hero-chips">${streak ? `<span>${icon('fire')} ${plural(streak, 'semana', 'semanas')}</span>` : ''}<span>${icon('check')} ${st.sent} encadenados</span></div>
+        <h2>${weekSessions >= goal ? '¡Objetivo cumplido!' : weekSessions ? `Te ${goal - weekSessions === 1 ? 'queda 1 sesión' : `quedan ${goal - weekSessions} sesiones`}` : 'Aún sin escalar'}</h2>
+        ${streak ? `<div class="hero-chips"><span>${icon('fire')} ${plural(streak, 'semana', 'semanas')} seguidas</span></div>` : ''}
       </div>
     </section>
-    ${!pending ? `<a class="btn primary block big" href="#/nueva" data-action="start-session">${icon('play')} Empezar sesión</a>` : ''}
-    ${s.length ? `<section class="kpis three">
-      ${kpi(st.bestBoulder ? gradeChip(st.bestBoulder) : '—', 'mejor bloque', true)}
-      ${kpi(st.bestRoute ? gradeChip(st.bestRoute) : '—', 'mejor vía', true)}
-      ${kpi(st.monthSessions, 'sesiones este mes')}
-    </section>` : ''}
+    ${!pending && !(plan?.today || plan?.pending) ? `<a class="btn primary block big" href="#/nueva" data-action="start-session">${icon('play')} Empezar sesión</a>` : ''}
+    ${last ? `<section><div class="section-head"><h2 class="section-title">Tu última sesión</h2><a href="#/diario">Diario</a></div>${sessionCard(last)}</section>` : ''}
+    ${insights.length ? `<section><h2 class="section-title">Para ti</h2><div class="insights">${insights.slice(0, 2).map(insightCard).join('')}</div>
+      ${insights.length > 2 ? `<a class="more" href="#/progreso">Ver tu progreso ${icon('chevron')}</a>` : ''}</section>` : ''}
     ${gymTeaser()}
     ${installCard()}
-    ${insights.length ? `<section><h2 class="section-title">Para ti</h2><div class="carousel">${insights.slice(0, 6).map(insightCard).join('')}</div></section>` : ''}
-    ${recent.length ? `<section><div class="section-head"><h2 class="section-title">Últimas sesiones</h2><a href="#/diario">Ver todas</a></div>
-      <div class="list">${recent.map(sessionCard).join('')}</div></section>` : ''}
-    ${photos.length ? `<section><div class="section-head"><h2 class="section-title">Fotos</h2><a href="#/diario" data-action="hist-tab" data-tab="photos">Galería</a></div>
-      <div class="strip">${photos.map((p) => `<button class="thumb" data-action="photo" data-id="${p.id}"><img src="${photoURL(p.id)}" alt=""></button>`).join('')}</div></section>` : ''}
-    ${s.length ? `<section><div class="section-head"><h2 class="section-title">Logros <span class="muted">${doneAch.length}/${ach.length}</span></h2><a href="#/progreso" data-action="prog-tab" data-v="logros">Ver todos</a></div>
-      <div class="badges row">${(doneAch.length ? doneAch.slice(-4).reverse() : ach.slice(0, 4)).map(badge).join('')}</div></section>` : ''}
-    ${!s.length ? `<div class="card soft center"><p>Registra tu primera sesión o explora la app con datos de ejemplo.</p><button class="btn ghost" data-action="demo">Ver con datos de ejemplo</button></div>` : ''}`;
+    ${!s.length ? `<div class="card soft center"><p>¿Quieres ver cómo queda con datos? Puedes cargar datos de ejemplo y borrarlos después en Ajustes.</p><button class="btn ghost" data-action="demo">Ver con datos de ejemplo</button></div>` : ''}`;
+}
+
+function planCardHTML(plan) {
+  const typeBtns = (date) => `<div class="plan-btns">
+      <button class="btn primary" data-action="plan-start" data-date="${date}" data-type="boulder">${icon('boulder')} Bloque</button>
+      <button class="btn primary alt" data-action="plan-start" data-date="${date}" data-type="route">${icon('rope')} Vías</button></div>`;
+  if (plan.pending) {
+    return `<div class="card plan warn-card">
+      <div class="plan-head"><span class="plan-ic">${icon('calendar')}</span><div><b>¿Qué tal la sesión ${esc(P.sessionOf(plan.pending))}?</b><small>Aún no la has registrado. ¿Qué tocó?</small></div></div>
+      ${typeBtns(plan.pending)}
+      <button class="link muted-link" data-action="plan-skip" data-date="${plan.pending}">No fui a escalar</button></div>`;
+  }
+  if (plan.today) {
+    return `<div class="card plan">
+      <div class="plan-head"><span class="plan-ic">${icon('clock')}</span><div><b>Hoy toca escalar${plan.today.after ? '' : ` a las ${esc(plan.time)}`}</b><small>${plan.today.after ? 'Registra lo que estás haciendo o lo que hiciste.' : '¿Bloque o vías? Empieza la sesión al llegar.'}</small></div></div>
+      ${typeBtns(plan.today.date)}</div>`;
+  }
+  if (plan.next) {
+    return `<button class="next-line" data-action="open-plan">${icon('calendar')}<span>Próxima sesión: <b>${esc(P.niceDate(plan.next, false))}</b> · ${esc(plan.time)}</span>${icon('chevron')}</button>`;
+  }
+  return `<button class="next-line" data-action="open-plan">${icon('calendar')}<span>Configura tus días de escalada</span>${icon('chevron')}</button>`;
+}
+
+function planSheet() {
+  state.climb = null;
+  const st = set(); const sch = st.schedule || { days: [4], time: '19:00' };
+  const extras = (st.extraDates || []).filter((d) => d >= I.today()).sort();
+  openSheet(`<div class="sheet">
+    <div class="grabber"></div>
+    <div class="sheet-head"><span></span><b>Tus días de escalada</b><button class="link" data-action="close-sheet" type="button">Listo</button></div>
+    <div class="sheet-body">${scheduleFields(sch, extras)}</div></div>`);
+}
+
+function scheduleFields(sch, extras) {
+  return `<div class="field"><span>Días fijos</span>
+      <div class="weekdays">${P.WEEKDAYS.map(([d, l]) => `<button class="wd ${(sch.days || []).map(String).includes(d) ? 'on' : ''}" data-action="sch-day" data-v="${d}" aria-label="${l}">${l}</button>`).join('')}</div></div>
+    <label class="field inline"><span>Hora de la clase</span><input type="time" data-sch-time value="${esc(sch.time || '19:00')}"></label>
+    <div class="field"><span>Días sueltos <small class="muted">p. ej. un sábado que vais</small></span>
+      <div class="chips">${extras.map((d) => `<span class="chip on">${esc(P.niceDate(d))} <button class="chip-x" data-action="sch-extra-del" data-v="${d}" aria-label="Quitar">${icon('close')}</button></span>`).join('')}
+        <button class="chip" data-action="sch-extra-add" data-v="${I.toISO(new Date(Date.now() + 86400000))}">＋ Mañana</button>
+        <label class="chip">＋ Otro día<input type="date" data-sch-extra min="${I.today()}" class="hidden-date"></label></div></div>
+    <button class="btn ghost block" data-action="ics">${icon('calendar')} Añadir recordatorios a mi calendario</button>
+    <p class="muted small">Se crea un evento semanal en el calendario del móvil que te avisa antes de la clase y, al terminar, te recuerda registrar la sesión.</p>`;
 }
 
 function gymTeaser() {
@@ -269,6 +308,7 @@ function viewOnboarding() {
       <div class="onb-art">${icon('wall')}</div>
       <p class="eyebrow">Tu cuaderno de escalada</p>
       <h1>Escala, apunta,<br><span class="accent">progresa.</span></h1>
+      <p class="onb-sub">Tu diario de escalada en ${esc(S.GYM.name)}: registra cada sesión en segundos y mira cómo mejoras.</p>
       <ul class="onb-list">
         <li>${icon('wall')}<div><b>Los bloques y vías reales de tu sala</b><small>Regístralos con un toque desde la pestaña Sala.</small></div></li>
         <li>${icon('chart')}<div><b>Tu progreso de verdad</b><small>Pirámide de grados, circuitos completados y evolución.</small></div></li>
@@ -285,6 +325,9 @@ function viewOnboarding() {
     <label class="field"><span>¿Cómo te llamas?</span><input data-setting="name" value="${esc(set().name)}" placeholder="Tu nombre" autocomplete="given-name"></label>
     <div class="field"><span>¿Cuántas sesiones por semana quieres hacer?</span>
       <div class="chips">${[1, 2, 3, 4, 5].map((n) => `<button class="chip ${set().weeklyGoal === n ? 'on' : ''}" data-action="set-goal" data-v="${n}">${n}</button>`).join('')}</div></div>
+    <div class="field"><span>¿Qué días sueles ir a escalar?</span>
+      <div class="weekdays">${P.WEEKDAYS.map(([d, l]) => `<button class="wd ${(set().schedule?.days || []).map(String).includes(d) ? 'on' : ''}" data-action="sch-day" data-v="${d}">${l}</button>`).join('')}</div></div>
+    <label class="field inline"><span>¿A qué hora?</span><input type="time" data-sch-time value="${esc(set().schedule?.time || '19:00')}"></label>
     <div class="field"><span>¿Qué circuito de bloque sueles escalar?</span>
       <div class="grade-grid">${scale.map((g) => `<button class="grade-pick ${set().usualCircuit === g.name ? 'on' : ''}" style="${C.gradeStyle(g.color)}" data-action="set-usual" data-v="${esc(g.name)}">${esc(g.name)}</button>`).join('')}</div></div>
     <button class="btn primary block big" data-action="onb-done">¡Vamos!</button>
@@ -389,7 +432,7 @@ function viewEditor(editId) {
   const photos = [...sessionPhotos(d.id).filter((p) => !d.removedPhotos.includes(p.id) && !p.climbId), ...d.newPhotos.filter((p) => !p.climbId)];
   const sent = d.climbs.filter(M.isSent).length;
   return `<div class="topline"><button class="back" data-action="cancel-draft">${icon('back')} ${d.isNew ? 'Descartar' : 'Cancelar'}</button><span class="muted small">${d.isNew ? 'Borrador guardado' : 'Editando'}</span></div>
-    <h1 class="page-title">${d.isNew ? 'Sesión de hoy' : 'Editar sesión'}</h1>
+    <h1 class="page-title">${d.isNew ? `Sesión ${esc(P.sessionOf(d.date))}` : 'Editar sesión'}</h1>
     ${d.isNew ? `<div class="card timer-card ${d.startedAt ? 'running' : ''}">
       ${icon('timer')}<div><b>${d.startedAt ? '<span data-timer></span>' : 'Cronómetro'}</b><small>${d.startedAt ? 'La duración se calcula sola al guardar' : 'Mide cuánto dura tu sesión'}</small></div>
       <button class="btn sm ${d.startedAt ? 'ghost' : 'primary'}" data-action="timer">${d.startedAt ? `${icon('stop')} Parar` : `${icon('play')} Iniciar`}</button></div>` : ''}
@@ -412,7 +455,7 @@ function viewEditor(editId) {
       <div class="field"><span>Esfuerzo percibido <b data-out="rpe">${d.rpe}/10 · ${rpeLabel(d.rpe)}</b></span>
         <input type="range" min="1" max="10" step="1" data-field="rpe" value="${d.rpe}" class="rpe"></div>
       <div class="field"><span>¿Cómo te has sentido?</span><div class="moods">${M.MOODS.map((m, i) => `<button class="mood ${d.mood === i ? 'on' : ''}" data-action="set-mood" data-v="${i}">${m}</button>`).join('')}</div></div>
-      <div class="field"><span>Entreno complementario</span><div class="chips">${Object.entries(M.TRAINING).map(([k, v]) => `<button class="chip ${(d.activities || []).includes(k) ? 'on' : ''}" data-action="set-activity" data-v="${k}">${v}</button>`).join('')}</div></div>
+      ${d.type === 'training' || (d.activities || []).length ? `<div class="field"><span>¿Qué entrenaste?</span><div class="chips">${Object.entries(M.TRAINING).map(([k, v]) => `<button class="chip ${(d.activities || []).includes(k) ? 'on' : ''}" data-action="set-activity" data-v="${k}">${v}</button>`).join('')}</div></div>` : ''}
     </div>
 
     <h2 class="section-title">Fotos y notas</h2>
@@ -546,15 +589,8 @@ const bandOf = (g) => { const i = M.ROUTE_GRADES.indexOf(g); return i < 9 ? 'b4'
 function viewGym() {
   const g = state.gym; const ui = state.ui;
   const head = `<div class="gym-hero">
-      <p class="eyebrow">Tu rocódromo</p>
-      <h1>${esc(S.GYM.name)}</h1>
-      <p class="gym-addr">${icon('pin')} ${esc(S.GYM.address)}</p>
-      <p class="gym-addr">${icon('metro')} ${esc(S.GYM.transport[0].text)}</p>
-      <div class="gym-links">
-        <a class="pill" href="${S.GYM.links.maps}" target="_blank" rel="noopener">${icon('map')} Cómo llegar</a>
-        <a class="pill" href="${S.GYM.links.hours}" target="_blank" rel="noopener">${icon('clock')} Horarios</a>
-        <a class="pill" href="${S.GYM.links.web}" target="_blank" rel="noopener">${icon('external')} Web</a>
-      </div>
+      <h1 class="page-title">Sala</h1>
+      <p class="gym-addr">${icon('pin')} ${esc(S.GYM.name)} · <a href="${S.GYM.links.maps}" target="_blank" rel="noopener">Cómo llegar</a> · <a href="${S.GYM.links.hours}" target="_blank" rel="noopener">Horarios</a></p>
     </div>`;
   if (!g && state.gymLoading) return `${head}<div class="skeleton-list">${'<div class="skel"></div>'.repeat(6)}</div>`;
   if (!g || (!g.boulders.length && !g.routes.length)) {
@@ -563,9 +599,8 @@ function viewGym() {
   const disc = ui.gymDisc;
   const items = disc === 'route' ? g.routes : g.boulders;
   const log = myLog();
-  const sectors = [...new Set(items.map((x) => x.sector))];
+  const sectors = [...new Set(items.map((x) => x.sector))].sort();
   if (ui.gymSector !== 'all' && !sectors.includes(ui.gymSector)) ui.gymSector = 'all';
-  const q = ui.gymQuery.trim().toLowerCase();
   const filtered = items.filter((x) => {
     if (ui.gymSector !== 'all' && x.sector !== ui.gymSector) return false;
     if (disc === 'boulder' && ui.gymCircuit !== 'all' && x.grade !== ui.gymCircuit) return false;
@@ -574,42 +609,33 @@ function viewGym() {
     if (ui.gymFilter === 'new' && Date.now() - x.date > 7 * 86400000) return false;
     if (ui.gymFilter === 'todo' && M.RESULTS[st?.best]?.sent) return false;
     if (ui.gymFilter === 'done' && !M.RESULTS[st?.best]?.sent) return false;
-    if (q && !`${x.number} ${x.sector} ${x.grade} ${x.hold} ${S.holdName(x.hold)} ${x.setter}`.toLowerCase().includes(q)) return false;
     return true;
   });
   const groups = {};
   filtered.sort((a, b) => a.sector.localeCompare(b.sector) || a.number.localeCompare(b.number, undefined, { numeric: true }))
     .forEach((x) => (groups[x.sector] ||= []).push(x));
   const scale = M.boulderScale(set());
-  const counts = {}; items.forEach((x) => { counts[x.grade] = (counts[x.grade] || 0) + 1; });
   const prog = disc === 'boulder' ? circuitProgress(g).filter((c) => c.total) : [];
-  const fresh = items.filter((x) => Date.now() - x.date < 7 * 86400000).length;
-  const sentHere = items.filter((x) => M.RESULTS[log.get(x.vlId)?.best]?.sent).length;
-  const updated = g.fetchedAt ? `Actualizado ${ago(g.fetchedAt) === 'hoy' ? new Date(g.fetchedAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : ago(g.fetchedAt)}` : '';
+  const updated = g.fetchedAt ? `Actualizado ${ago(g.fetchedAt) === 'hoy' ? `hoy a las ${new Date(g.fetchedAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}` : ago(g.fetchedAt)}` : '';
   const sectorMeta = Object.fromEntries(items.map((x) => [x.sector, x.sectorId]));
+  const filtersOn = ui.gymSector !== 'all' || ui.gymCircuit !== 'all' || ui.gymFilter !== 'all';
   return `${head}
     ${seg('gym-disc', disc, { boulder: `Bloques <small>${g.boulders.length}</small>`, route: `Vías <small>${g.routes.length}</small>` })}
-    <section class="kpis three">
-      ${kpi(items.length, disc === 'route' ? 'vías montadas' : 'bloques montados')}
-      ${kpi(fresh, 'nuevos esta semana')}
-      ${kpi(`${sentHere}`, 'ya encadenados')}
-    </section>
-    ${prog.length ? `<div class="card"><h3>${icon('trophy')} Tus circuitos actuales</h3><div class="circuits">${prog.map((p) => `<button class="circ ${ui.gymCircuit === p.name ? 'on' : ''}" data-action="gym-circuit" data-v="${esc(p.name)}">
-        <span class="grade sm${scale.find((s) => s.name === p.name)?.joker ? ' joker' : ''}" style="${C.gradeStyle(p.color)}">${esc(p.name)}</span>
-        <div class="bar"><i style="width:${Math.round(p.done / p.total * 100)}%;background:${p.color}"></i></div><small>${p.done}/${p.total}</small></button>`).join('')}</div></div>` : ''}
-    <div class="search">${icon('search')}<input type="search" data-gym-query value="${esc(ui.gymQuery)}" placeholder="Buscar número, sector, color…" aria-label="Buscar"></div>
-    <div class="chips scroll">${Object.entries({ all: 'Todos', new: 'Nuevos', todo: 'Pendientes', done: 'Hechos' }).map(([k, v]) => `<button class="chip ${ui.gymFilter === k ? 'on' : ''}" data-action="gym-filter" data-v="${k}">${v}</button>`).join('')}</div>
-    <div class="chips scroll">${disc === 'boulder'
-      ? `<button class="chip ${ui.gymCircuit === 'all' ? 'on' : ''}" data-action="gym-circuit" data-v="all">Todos los circuitos</button>${scale.filter((s) => counts[s.name]).map((s) => `<button class="chip dotchip ${ui.gymCircuit === s.name ? 'on' : ''}" data-action="gym-circuit" data-v="${esc(s.name)}"><i style="background:${s.color}"></i>${esc(s.name)}</button>`).join('')}`
-      : Object.entries(ROUTE_BANDS).map(([k, v]) => `<button class="chip ${ui.gymCircuit === k ? 'on' : ''}" data-action="gym-circuit" data-v="${k}">${v}</button>`).join('')}</div>
-    <div class="chips scroll">
-      <button class="chip ${ui.gymMap ? 'on' : ''}" data-action="gym-map">${icon('map')} Mapa</button>
-      <button class="chip ${ui.gymSector === 'all' ? 'on' : ''}" data-action="gym-sector" data-v="all">Todos los sectores</button>${sectors.map((s) => `<button class="chip ${ui.gymSector === s ? 'on' : ''}" data-action="gym-sector" data-v="${esc(s)}">${esc(s)}</button>`).join('')}</div>
+    ${prog.length ? `<div class="card"><h3>Tus circuitos <small class="muted">toca uno para verlo</small></h3><div class="circuits">${prog.map((p) => `<button class="circ ${ui.gymCircuit === p.name ? 'on' : ''}" data-action="gym-circuit" data-v="${esc(p.name)}">
+        <span class="grade sm${scale.find((x) => x.name === p.name)?.joker ? ' joker' : ''}" style="${C.gradeStyle(p.color)}">${esc(p.name)}</span>
+        <div class="bar"><i style="width:${Math.round(p.done / p.total * 100)}%;background:${p.color}"></i></div><small>${p.done}/${p.total}</small></button>`).join('')}</div></div>`
+      : `<div class="chips scroll">${Object.entries(ROUTE_BANDS).map(([k, v]) => `<button class="chip ${ui.gymCircuit === k ? 'on' : ''}" data-action="gym-circuit" data-v="${k}">${v}</button>`).join('')}</div>`}
+    <div class="filter-bar">
+      <label class="select">${icon('pin')}<select data-gym-select="gymSector" aria-label="Sector"><option value="all">Todos los sectores</option>${sectors.map((x) => `<option ${ui.gymSector === x ? 'selected' : ''} value="${esc(x)}">${esc(x)}</option>`).join('')}</select></label>
+      <label class="select">${icon('check')}<select data-gym-select="gymFilter" aria-label="Estado">${Object.entries({ all: 'Todos', new: 'Nuevos', todo: 'Me faltan', done: 'Hechos' }).map(([k, v]) => `<option ${ui.gymFilter === k ? 'selected' : ''} value="${k}">${v}</option>`).join('')}</select></label>
+      <button class="icon-btn ${ui.gymMap ? 'on' : ''}" data-action="gym-map" aria-label="Mapa de sectores">${icon('map')}</button>
+    </div>
     ${ui.gymMap ? gymMapCard(sectors.map((name) => ({ name, id: sectorMeta[name] }))) : ''}
+    ${filtersOn ? `<p class="filters-note">${plural(filtered.length, 'resultado', 'resultados')} · <button class="link" data-action="gym-clear">Quitar filtros</button></p>` : ''}
     ${Object.keys(groups).length ? Object.entries(groups).map(([sector, list]) => `<h2 class="month">${esc(sector)} <span class="muted">${list.length}</span></h2>
       <div class="gym-grid">${list.map((x) => gymItem(x, log.get(x.vlId))).join('')}</div>`).join('')
       : emptyState('Nada con estos filtros', 'Prueba a quitar algún filtro.', `<button class="btn ghost" data-action="gym-clear">Quitar filtros</button>`, 'search')}
-    <p class="muted small center src">${updated}${g.offline ? ' · sin conexión' : ''} · Datos publicados por la sala en Vertical-Life
+    <p class="muted small center src">${updated}${g.offline ? ' · sin conexión' : ''} · Datos de la sala vía Vertical-Life
       <button class="link" data-action="gym-refresh">${icon('refresh')} Actualizar</button></p>`;
 }
 
@@ -635,9 +661,10 @@ function gymMapCard(sectors) {
   }
   const activeId = sectors.find((s) => s.name === state.ui.gymSector)?.id;
   const withTopo = known.map((s) => ({ ...s, topo: state.gymSectors[s.id] })).filter((s) => s.topo);
+  const loading = missing.length > 0;
   return `<div class="card map-card">
-    ${withTopo.length ? S.sectorMapHTML(withTopo, activeId) : '<div class="skel tall"></div>'}
-    <p class="muted small">Toca un sector del plano para filtrarlo.</p></div>`;
+    ${withTopo.length ? S.sectorMapHTML(withTopo, activeId) : loading ? '<div class="skel tall"></div>' : '<p class="muted small">El plano de la sala aún no está disponible.</p>'}
+    ${withTopo.length ? '<p class="muted small">Toca un sector del plano para ver solo sus bloques.</p>' : ''}</div>`;
 }
 
 async function openGymItem(vlId) {
@@ -653,8 +680,8 @@ async function openGymItem(vlId) {
       <div class="gd-head">${holdDot(x.holdColor, x.number, 'lg')}
         <div><div class="gd-title">${gradeChip(fake)} <span>${esc(x.sector)}</span></div>
         <small class="muted">Presa ${esc(S.holdName(x.hold)).toLowerCase()} · abierto ${ago(x.date)}${detail?.expires ? ` · se desmonta ~${esc(detail.expires)}` : ''}</small>
-        ${detail?.stars ? `<div class="stars">${icon('star').repeat(detail.stars)}</div>` : ''}</div></div>
-      ${detail === undefined ? '<div class="skel tall"></div>' : detail?.wall ? S.topoHTML(detail.wall, x.holdColor, { label: 'Zona del bloque en el muro' }) : ''}
+</div></div>
+      ${detail === undefined ? '<div class="skel tall"></div>' : detail?.wall ? S.topoHTML(detail.wall, x.holdColor, { label: isRoute ? 'Línea de la vía en el muro' : 'Zona del bloque en el muro', line: isRoute }) : '<p class="muted small">La foto de este bloque estará disponible mañana.</p>'}
       ${detail?.map ? S.topoHTML(detail.map, '#ff6b35', { cls: 'small', label: `Sector ${x.sector} en la sala` }) : ''}
       ${st ? `<div class="card soft"><b>Tu historial</b><p class="muted small">${M.RESULTS[st.best].short} ${M.RESULTS[st.best].label} · ${plural(st.tries, 'intento', 'intentos')} en ${plural(st.sessions, 'sesión', 'sesiones')}${st.last ? ` · último ${I.fmtDate(st.last)}` : ''}</p></div>` : ''}
       ${x.setter ? `<p class="muted small">Equipado por ${esc(x.setter)}</p>` : ''}
@@ -667,6 +694,7 @@ async function openGymItem(vlId) {
       </div>
       <button type="button" class="btn ghost block" data-action="gym-log-more" data-id="${esc(x.vlId)}">Registrar con más detalles</button>
     </div></div>`;
+  state.climb = null;
   openSheet(draw(undefined), 'gym-sheet');
   let detail = null;
   try { detail = await S.getDetail(x); } catch { detail = null; }
@@ -699,7 +727,6 @@ function progGrades() {
   const bestF = disc === 'route' ? st.bestFlashRoute : st.bestFlashBoulder;
   const projects = I.openProjects(s, set());
   const done = I.sentProjects(s);
-  const tags = I.tagStats(s.map((x) => ({ ...x, climbs: (x.climbs || []).filter((c) => c.discipline === disc) })));
   return `${seg('prog-disc', disc, { boulder: 'Bloque', route: 'Vías' })}
     <section class="kpis">
       ${kpi(best ? gradeChip(best) : '—', 'máximo encadenado', true)}
@@ -707,14 +734,9 @@ function progGrades() {
       ${kpi(sentN, 'encadenados')}
       ${kpi(climbs.length ? `${Math.round(sentN / climbs.length * 100)}%` : '—', 'tasa de éxito')}
     </section>
-    <div class="card"><h3>Evolución <small class="muted">últimas 12 semanas</small></h3>${C.progressChart(I.weeklyProgress(s, disc), label)}</div>
-    <div class="card"><h3>Pirámide</h3>${C.pyramidChart(I.pyramid(s, disc, set()), label, color)}</div>
-    <div class="card"><h3>Volumen semanal</h3>${C.volumeChart(I.weeklyVolume(s))}</div>
-    <div class="card"><h3>Calendario</h3><div class="scroll-x">${C.calendarHeatmap(s)}</div></div>
-    <div class="card"><h3>Estilos: pruebas vs. encadenas</h3>
-      ${tags.length ? tags.slice(0, 10).map((t) => `<div class="bar-row wide"><span>${esc(t.label)}</span><div class="bar"><i style="width:${Math.round(t.rate * 100)}%"></i></div><small>${t.sent}/${t.total}</small></div>`).join('')
-        : '<p class="muted small">Etiqueta tus escaladas (desplome, regletas, dinámico…) para descubrir tus puntos fuertes y débiles.</p>'}
-    </div>
+    <div class="card"><h3>Tu nivel semana a semana</h3>${C.progressChart(I.weeklyProgress(s, disc), label)}</div>
+    <div class="card"><h3>Lo que has encadenado por nivel</h3>${C.pyramidChart(I.pyramid(s, disc, set()), label, color)}</div>
+    <div class="card"><h3>Días que has escalado</h3><div class="scroll-x">${C.calendarHeatmap(s)}</div></div>
     <div class="card"><h3>${icon('flag')} Proyectos abiertos</h3>
       ${projects.length ? projects.map((p) => `<div class="proj">${gradeChip(p)}<div><b>${esc(p.name)}</b><small class="muted">${plural(p.sessions, 'sesión', 'sesiones')} · ${p.attemptsTotal} intentos · último ${I.fmtDate(p.lastTried)}</small></div></div>`).join('')
         : '<p class="muted small">Marca algo como «Proyecto» (o regístralo desde la Sala) para seguirlo entre sesiones.</p>'}
@@ -768,6 +790,12 @@ function viewSettings() {
       <label class="field"><span>Tu nombre</span><input data-setting="name" value="${esc(st.name)}" placeholder="¿Cómo te llamas?"></label>
       <div class="field"><span>Objetivo semanal</span><div class="chips">${[1, 2, 3, 4, 5, 6].map((n) => `<button class="chip ${st.weeklyGoal === n ? 'on' : ''}" data-action="set-goal" data-v="${n}">${plural(n, 'sesión', 'sesiones')}</button>`).join('')}</div></div>
       <div class="field"><span>Tema</span>${seg('theme', st.theme || 'auto', { auto: 'Automático', light: 'Claro', dark: 'Oscuro' })}</div>
+    </div>
+    <div class="card form">
+      <h3>${icon('calendar')} Tus días de escalada</h3>
+      ${scheduleFields(st.schedule || { days: [4], time: '19:00' }, (st.extraDates || []).filter((d) => d >= I.today()).sort())}
+    </div>
+    <div class="card form">
       <label class="switch"><span><b>Datos de la sala en directo</b><small class="muted">Bloques y vías actuales de ${esc(S.GYM.name)} (Vertical-Life)</small></span><input type="checkbox" data-toggle="liveGym" ${st.liveGym !== false ? 'checked' : ''}><i></i></label>
     </div>
     <div class="card">
@@ -791,7 +819,7 @@ function viewSettings() {
         <button class="btn" data-action="export">${icon('download')} Descargar copia de seguridad</button>
         <label class="btn ghost"><input type="file" accept="application/json,.json" data-upload="import" hidden>${icon('upload')} Restaurar copia</label>
         ${demoCount ? `<button class="btn ghost" data-action="demo-clear">Quitar datos de ejemplo (${demoCount})</button>` : '<button class="btn ghost" data-action="demo">Cargar datos de ejemplo</button>'}
-        <button class="btn danger ghost" data-action="wipe">${icon('trash')} Borrar todos los datos</button>
+        <button class="btn danger ghost" data-action="wipe">${icon('trash')} Borrar todo y empezar de cero</button>
       </div>
       <p class="muted small">${plural(state.sessions.length, 'sesión', 'sesiones')} · ${plural(state.photos.size, 'foto', 'fotos')}</p>
     </div>
@@ -927,21 +955,65 @@ const actions = {
     toast('Datos de ejemplo eliminados');
     rerender();
   },
-  async wipe() {
-    if (!confirm('¿Seguro? Se borrarán todas las sesiones y fotos de este dispositivo. Esto no se puede deshacer.')) return;
-    await Promise.all([db.clear('sessions'), db.clear('photos')]);
-    state.draft = null; state.stash = null;
-    await db.del('settings', 'draft');
-    state.sessions = []; state.photos.clear();
-    toast('Datos borrados');
+  async wipe(el) {
+    if (!el.classList.contains('confirm')) {
+      el.classList.add('confirm'); haptic(20);
+      el.innerHTML = `${icon('trash')} ¿Seguro? Toca otra vez para borrarlo todo`;
+      clearTimeout(actions.wipe.t);
+      actions.wipe.t = setTimeout(() => { if (el.isConnected) { el.classList.remove('confirm'); el.innerHTML = `${icon('trash')} Borrar todo y empezar de cero`; } }, 4000);
+      return;
+    }
+    clearTimeout(actions.wipe.t);
+    await Promise.all([db.clear('sessions'), db.clear('photos'), db.clear('settings')]);
+    state.urls.forEach((u) => URL.revokeObjectURL(u)); state.urls.clear();
+    Object.assign(state, { sessions: [], draft: null, stash: null, climb: null, settings: { ...DEFAULT_SETTINGS } });
+    state.photos.clear(); state.ui.onb = 0;
+    applyTheme();
+    toast('Todo borrado. ¡Como recién instalada!');
     go('#/inicio');
+    loadGym(true);
   },
   'onb-next'() { state.ui.onb = 1; render({ transition: true }); },
-  async 'onb-done'() { state.settings.onboarded = true; await saveSettings(); state.ui.onb = 0; render({ transition: true }); },
+  async 'onb-done'() {
+    state.settings.onboarded = true;
+    const d = new Date(); d.setDate(d.getDate() - 7); state.settings.planSince = I.toISO(d);
+    await saveSettings(); state.ui.onb = 0; render({ transition: true }); },
   async 'set-goal'(el) { state.settings.weeklyGoal = Number(el.dataset.v); await saveSettings(); rerender(); },
   async 'set-usual'(el) { state.settings.usualCircuit = el.dataset.v; await saveSettings(); rerender(); },
   async install() { const e = state.installEvt; if (!e) return; e.prompt(); await e.userChoice.catch(() => {}); state.installEvt = null; rerender(); },
   async 'install-dismiss'() { state.settings.installDismissed = true; await saveSettings(); rerender(); },
+  'plan-start'(el) {
+    const date = el.dataset.date; const type = el.dataset.type;
+    let d = state.draft?.isNew ? state.draft : null;
+    if (d && d.climbs.length && d.date !== date) { toast('Ya tienes una sesión abierta: termínala primero'); go('#/nueva'); return; }
+    d = ensureDraft(); if (!d) { toast('Termina primero de editar la sesión abierta'); return; }
+    d.date = date; d.type = type; state.ui.quickDisc = type;
+    const plan = P.planState(set(), state.sessions, null);
+    if (date === I.today() && !(plan.today?.after) && !d.startedAt) d.startedAt = Date.now();
+    saveDraftSoon(); haptic();
+    go('#/nueva');
+  },
+  async 'plan-skip'(el) {
+    state.settings.skipped = [...new Set([...(set().skipped || []), el.dataset.date])].slice(-60);
+    await saveSettings(); toast('Vale, ¡a la próxima! 💪'); rerender();
+  },
+  'open-plan'() { planSheet(); },
+  async 'sch-day'(el) {
+    const sch = { days: [4], time: '19:00', ...set().schedule };
+    const v = Number(el.dataset.v); const days = (sch.days || []).map(Number);
+    sch.days = days.includes(v) ? days.filter((x) => x !== v) : [...days, v];
+    state.settings.schedule = sch; await saveSettings(); refreshPlanUI();
+  },
+  async 'sch-extra-add'(el) { await addExtraDate(el.dataset.v); },
+  async 'sch-extra-del'(el) { state.settings.extraDates = (set().extraDates || []).filter((d) => d !== el.dataset.v); await saveSettings(); refreshPlanUI(); },
+  ics() {
+    const blob = new Blob([P.scheduleICS(set())], { type: 'text/calendar' });
+    const url = URL.createObjectURL(blob);
+    const a = Object.assign(document.createElement('a'), { href: url, download: 'escalada.ics' });
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    toast('Abre el archivo para añadirlo a tu calendario');
+  },
   'start-session'() { const d = ensureDraft(); if (d && !d.startedAt && !d.climbs.length) { d.startedAt = Date.now(); saveDraftSoon(); } },
   export: exportData,
   'hist-tab'(el) { state.ui.histTab = el.dataset.v || el.dataset.tab; if (location.hash === '#/diario') rerender(); },
@@ -1051,6 +1123,7 @@ const actions = {
       toast(`${M.gradeLabel(c, set())} añadido`);
       openClimbSheet(newClimb(c.discipline, { grade: c.grade, zone: c.zone }));
     } else {
+      state.climb = null;
       closeSheet();
       if (c.vlId && isNew) toast('Añadido a tu sesión de hoy', { label: 'Ver', href: '#/nueva' });
     }
@@ -1060,6 +1133,7 @@ const actions = {
     const d = state.draft; const c = state.climb;
     d.climbs = d.climbs.filter((x) => x.id !== c.id);
     d.newPhotos = d.newPhotos.filter((p) => p.climbId !== c.id);
+    state.climb = null;
     saveDraftSoon();
     closeSheet(); rerender();
   },
@@ -1117,6 +1191,18 @@ const actions = {
   },
 };
 
+async function addExtraDate(iso) {
+  if (!iso) return;
+  state.settings.extraDates = [...new Set([...(set().extraDates || []), iso])].filter((d) => d >= I.today()).sort();
+  state.settings.skipped = (set().skipped || []).filter((d) => d !== iso);
+  await saveSettings(); haptic(); toast(`Apuntado: ${P.niceDate(iso)}`); refreshPlanUI();
+}
+
+function refreshPlanUI() {
+  if ($('#sheet').open && $('#sheet .weekdays')) planSheet();
+  rerender();
+}
+
 function closeSheet() {
   const dlg = $('#sheet');
   if (!dlg.open) return;
@@ -1166,6 +1252,11 @@ function onInput(e) {
 
 async function onChange(e) {
   const el = e.target;
+  if (el.hasAttribute('data-sch-time')) {
+    state.settings.schedule = { days: [4], ...set().schedule, time: el.value || '19:00' }; await saveSettings(); return;
+  }
+  if (el.hasAttribute('data-sch-extra')) { await addExtraDate(el.value); return; }
+  if (el.dataset.gymSelect) { state.ui[el.dataset.gymSelect] = el.value; rerender(); return; }
   if (el.dataset.toggle) {
     state.settings[el.dataset.toggle] = el.checked; await saveSettings();
     if (el.dataset.toggle === 'liveGym' && el.checked) loadGym();
