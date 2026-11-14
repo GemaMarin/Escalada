@@ -1,6 +1,6 @@
 {
-  "name": "Cuaderno de Escalada",
-  "short_name": "Escalada",
+  "name": "Mi Escalada",
+  "short_name": "Mi Escalada",
   "description": "Registra tus sesiones de escalada: bloques, vías, fotos, progreso y carga corporal.",
   "lang": "es",
   "start_url": "./#/inicio",

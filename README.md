@@ -1,4 +1,4 @@
-# 🧗‍♀️ Cuaderno de Escalada
+# 🧗‍♀️ Mi Escalada
 
 App web para registrar entrenamientos de escalada en rocódromo (pensada para **Sharma Climbing Madrid**, pero vale para cualquier sala).
 Funciona en el móvil, se puede instalar en la pantalla de inicio y funciona sin conexión.

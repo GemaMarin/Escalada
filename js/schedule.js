@@ -79,10 +79,10 @@ export function scheduleICS(settings) {
     'SUMMARY:🧗‍♀️ Escalada', `LOCATION:${settings.gym || 'Rocódromo'}`,
     `DESCRIPTION:Al terminar\\, registra tu sesión: ${url}`, `URL:${url}`,
     'BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:Hoy toca escalar 🧗‍♀️', 'TRIGGER:-PT2H', 'END:VALARM',
-    'BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:¿Qué tal la sesión? Regístrala en el Cuaderno de escalada', 'TRIGGER;RELATED=END:PT15M', 'END:VALARM',
+    'BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:¿Qué tal la sesión? Regístrala en Mi Escalada', 'TRIGGER;RELATED=END:PT15M', 'END:VALARM',
     'END:VEVENT',
   ].filter(Boolean);
-  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Cuaderno de escalada//ES', 'CALSCALE:GREGORIAN'];
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Mi Escalada//ES', 'CALSCALE:GREGORIAN'];
   if (days.length) lines.push(...ev('semanal', start, end, `RRULE:FREQ=WEEKLY;BYDAY=${byday}`));
   for (const iso of settings.extraDates || []) {
     if (iso < today()) continue;

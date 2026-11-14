@@ -84,7 +84,7 @@ export async function sessionImage(d) {
   ctx.fillStyle = '#1d1714';
   ctx.beginPath(); ctx.moveTo(88, fy + 8); ctx.lineTo(106, fy - 22); ctx.lineTo(114, fy - 10); ctx.lineTo(122, fy - 18); ctx.lineTo(136, fy + 8); ctx.closePath(); ctx.fill();
   ctx.fillStyle = '#1a1512'; ctx.font = '700 30px Outfit, system-ui, sans-serif';
-  ctx.fillText('Cuaderno de escalada', 164, fy - 14);
+  ctx.fillText('Mi Escalada', 164, fy - 14);
   ctx.fillStyle = '#7d7169'; ctx.font = '500 24px Outfit, system-ui, sans-serif';
   ctx.fillText(d.gym || '', 164, fy + 16);
 

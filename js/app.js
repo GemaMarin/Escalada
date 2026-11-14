@@ -1220,7 +1220,7 @@ function viewSettings() {
       </div>
       <p class="muted small">${plural(state.sessions.length, 'sesión', 'sesiones')} · ${plural(state.photos.size, 'foto', 'fotos')}${state.persisted ? ' · ✓ guardado de forma permanente en este móvil' : ''}${set().lastBackup ? ` · última copia ${ago(set().lastBackup)}` : ''}</p>
     </div>
-    <p class="muted small center about">Cuaderno de Escalada · app no oficial, sin relación con Sharma Climbing.<br>Los bloques y vías de la sala proceden del widget público de Vertical-Life.</p>`;
+    <p class="muted small center about">Mi Escalada · app no oficial, sin relación con Sharma Climbing.<br>Los bloques y vías de la sala proceden del widget público de Vertical-Life.</p>`;
 }
 
 function toHex(c) {
