@@ -281,6 +281,7 @@ a.card:active, .gym-item:active { transform: scale(.985); }
 @keyframes pop { 40% { transform: scale(1.2); } }
 .ach-head { display: flex; align-items: center; gap: 16px; }
 .ach-head > div { display: grid; }
+.ach-big { font-size: 46px; line-height: 1; }
 .ach-head .ring-bg { stroke: var(--surface-2); }
 .ach-head .ring-fg { stroke: var(--accent); }
 

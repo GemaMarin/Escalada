@@ -268,11 +268,16 @@ export function achievements(sessions, photos, extra = {}) {
     { key: 'conseguidos', icon: '✅', title: 'Conseguidos', value: sent.length, tiers: [5, 25, 50, 100, 250, 500, 1000], unit: (n) => `${n} bloques o vías` },
     { key: 'flash', icon: '⚡', title: 'A la primera', value: climbs.filter((c) => c.result === 'flash' || c.result === 'onsight').length, tiers: [1, 10, 25, 50, 100, 250], unit: (n) => `${n} a la primera` },
     { key: 'racha', icon: '🔥', title: 'Racha', value: maxStreakEver(sessions), tiers: [2, 4, 8, 12, 26, 52], unit: (n) => `${n} semanas seguidas` },
-    { key: 'mes', icon: '📆', title: 'Mes intenso', value: Math.max(0, ...Object.values(months)), tiers: [4, 6, 8, 12], unit: (n) => `${n} sesiones en un mes` },
+    { key: 'mes', icon: '📆', title: 'Mes intenso', value: Math.max(0, ...Object.values(months)), tiers: [4, 6, 8, 10, 12, 15, 20], unit: (n) => `${n} sesiones en un mes` },
   ];
   if (colorTiers.length) {
     const reached = colorTiers.filter((t) => maxB >= t.i).length;
     families.push({ key: 'colores', icon: '🌈', title: 'Colores', value: reached, tiers: colorTiers.map((_, k) => k + 1), unit: (n) => `Consigue un ${colorTiers[n - 1]?.name || ''}`, doneUnit: (n) => `Primer ${colorTiers[n - 1]?.name || ''}` });
+  }
+  if (maxB >= 0 && colorTiers.length) {
+    // Siempre hay algo que mejorar: bloques conseguidos de tu color más difícil.
+    const top = colorTiers.filter((t) => t.i <= maxB).pop();
+    if (top) families.push({ key: `domina-${top.i}`, icon: '👑', title: `Domina el ${top.name}`, value: bSent.filter((g) => g === top.i).length, tiers: [3, 5, 10, 20], open: true, unit: (n) => `${n} bloques ${top.name.toLowerCase().endsWith('o') ? top.name.toLowerCase().replace(/o$/, 'os') : top.name.toLowerCase()}` });
   }
   if (rSent.length) {
     const reached = routeTiers.filter((t) => maxR >= t).length;
@@ -285,12 +290,19 @@ export function achievements(sessions, photos, extra = {}) {
     { key: 'amigas', icon: '👯', title: 'En compañía', value: sessions.filter((s) => (s.with || []).length).length, tiers: [1, 5, 10, 25], unit: (n) => `${n} ${n === 1 ? 'sesión' : 'sesiones'} con amigas` },
     { key: 'fotos', icon: '📸', title: 'Fotógrafa', value: photos || 0, tiers: [1, 5, 20, 50], unit: (n) => `${n} ${n === 1 ? 'foto' : 'fotos'}` },
   );
+  const finite = new Set(['colores', 'vias', 'mes']);
   return families.map((f) => {
+    // Al superar el último nivel se generan más (mismo salto que el último), así siempre hay objetivo.
+    if (!finite.has(f.key)) {
+      const t = [...f.tiers];
+      while (t[t.length - 1] <= f.value) { const a = t[t.length - 1]; const b = t[t.length - 2] || 0; t.push(a + Math.max(1, a - b)); }
+      f.tiers = t;
+    }
     const level = f.tiers.filter((t) => f.value >= t).length;
     const next = f.tiers[level];
     const prev = level ? f.tiers[level - 1] : 0;
     return {
-      ...f, level, max: f.tiers.length, complete: level === f.tiers.length,
+      ...f, level, max: f.tiers.length, complete: finite.has(f.key) && level === f.tiers.length,
       goal: next != null ? f.unit(next) : '¡Todo completado!',
       done: level ? (f.doneUnit || f.unit)(f.tiers[level - 1]) : null,
       progress: next != null ? Math.min(1, (f.value - prev) / (next - prev)) : 1,
