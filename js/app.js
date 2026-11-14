@@ -138,7 +138,7 @@ async function loadGym(force = false) {
   state.gymLoading = true;
   if (['sala', 'nueva'].includes(route())) rerender();
   try { state.gym = await S.getGym({ force }); } finally { state.gymLoading = false; }
-  if (['sala', 'inicio', 'nueva', 'perfil', 'eventos', 'progreso'].includes(route()) && !document.querySelector('dialog[open]')) rerender();
+  if (['sala', 'inicio', 'nueva', 'perfil', 'eventos', 'progreso', 'objetivos'].includes(route()) && !document.querySelector('dialog[open]')) rerender();
 }
 
 // ---------------- Router ----------------
@@ -155,6 +155,8 @@ const routes = [
   [/^#\/cuerpo$/, viewProgress, 'progreso'],
   [/^#\/ajustes$/, viewSettings, 'perfil'],
   [/^#\/eventos$/, viewEvents, 'eventos'],
+  [/^#\/objetivos$/, viewObjectives, 'objetivos'],
+  [/^#\/logros$/, viewObjectives, 'objetivos'],
 ];
 const route = () => document.body.dataset.route;
 
@@ -680,7 +682,7 @@ function viewProfile() {
     </section>
     <div class="prof-links">
       <a class="card prof-link" href="#/progreso" data-action="prog-tab" data-v="resumen">${icon('chart')}<span><b>Tu progreso</b><small>Nivel, colores y semanas</small></span>${icon('chevron', 'muted')}</a>
-      <a class="card prof-link" href="#/progreso" data-action="prog-tab" data-v="logros">${icon('trophy')}<span><b>Tus logros</b><small>${got} conseguidos</small></span>${icon('chevron', 'muted')}</a>
+      <a class="card prof-link" href="#/objetivos">${icon('trophy')}<span><b>Tus objetivos</b><small>${got} conseguidos</small></span>${icon('chevron', 'muted')}</a>
     </div>
     ${monthCalendar()}
     <div class="section-head"><h2 class="section-title">Mis sesiones</h2><button class="link" data-action="past-session">${icon('plus')} Añadir sesión pasada</button></div>
@@ -1270,11 +1272,11 @@ function gymMapCard(sectors) {
 
 // ---------------- Progreso ----------------
 function viewProgress() {
-  const tab = state.ui.progTab;
-  const tabs = seg('prog-tab', tab, { resumen: 'Resumen', logros: 'Logros' });
+  const tabs = '';
   if (!state.sessions.length) return `<h1 class="page-title">Progreso</h1>${tabs}${emptyState('Aún no hay datos', 'Apunta tu primera sesión y aquí verás cómo mejoras.', '<a class="btn primary" href="#/nueva">Registrar sesión</a>', 'chart')}`;
-  const body = tab === 'logros' ? progAchievements() : progSummary();
-  return `<div class="title-row"><h1 class="page-title">Progreso</h1><button class="btn sm share-mini" data-action="share-progress">${icon('camera')} Compartir</button></div>${tabs}${body}`;
+  return `<div class="title-row"><h1 class="page-title">Progreso</h1><button class="btn sm share-mini" data-action="share-progress">${icon('camera')} Compartir</button></div>
+    <a class="card prof-link obj-link" href="#/objetivos">${icon('trophy')}<span><b>Tus objetivos</b><small>${achievementsNow().reduce((a, x) => a + x.level, 0)} completados · retos del mes</small></span>${icon('chevron', 'muted')}</a>
+    ${progSummary()}`;
 }
 
 function progSummary() {
@@ -1352,6 +1354,74 @@ function achievementsNow() {
   const g = state.gym;
   const complete = g ? circuitProgress(g).filter((c) => c.total && !c.joker && c.done === c.total).length : 0;
   return I.achievements(state.sessions, state.photos.size, { scale: M.boulderScale(set()), completeCircuits: complete });
+}
+
+// Retos del mes: se generan solos cada mes según tu nivel, así siempre hay algo que cumplir.
+function monthlyChallenges() {
+  const now = new Date();
+  const ym = I.today().slice(0, 7);
+  const monthName = now.toLocaleDateString('es-ES', { month: 'long' });
+  const real = realSessions();
+  const monthSessions = real.filter((x) => x.date.startsWith(ym));
+  const allMonth = state.sessions.filter((x) => x.date.startsWith(ym));
+  const mClimbs = I.allClimbs(allMonth);
+  const climbs = I.allClimbs(state.sessions);
+  const reg = sharmaRegular();
+  const bSentAll = climbs.filter((c) => c.discipline === 'boulder' && M.isSent(c)).map((c) => c.grade);
+  const best = bSentAll.length ? Math.max(...bSentAll) : null;
+  const cur = best != null ? reg.filter((g) => g.i <= best).pop() : reg.find((g) => g.name === set().usualCircuit) || reg[0];
+  const next = best != null ? reg.find((g) => g.i > best) : null;
+  const out = [];
+  const goalSessions = Math.max(4, (set().weeklyGoal || 1) * 4);
+  out.push({ icon: '📅', title: `${goalSessions} sesiones en ${monthName}`, value: monthSessions.length, target: goalSessions });
+  if (next) {
+    const triedNext = mClimbs.filter((c) => c.discipline === 'boulder' && c.grade === next.i).length;
+    const sentNext = mClimbs.filter((c) => c.discipline === 'boulder' && c.grade === next.i && M.isSent(c)).length;
+    out.push({ icon: '🎯', title: `Prueba 3 bloques ${colorPlural(next.name)}`, value: triedNext, target: 3, color: next.color });
+    out.push({ icon: '🚀', title: `Consigue un ${next.name}`, value: sentNext, target: 1, color: next.color });
+  } else if (cur) {
+    out.push({ icon: '👑', title: `5 bloques ${colorPlural(cur.name)} este mes`, value: mClimbs.filter((c) => c.discipline === 'boulder' && c.grade === cur.i && M.isSent(c)).length, target: 5, color: cur.color });
+  }
+  out.push({ icon: '⚡', title: '5 a la primera este mes', value: mClimbs.filter((c) => statusOf(c.result) === 'flash').length, target: 5 });
+  out.push({ icon: '🧱', title: '5 bloques concretos de la sala', value: new Set(mClimbs.filter((c) => c.vlId).map((c) => c.vlId)).size, target: 5 });
+  return { monthName, list: out.map((c) => ({ ...c, done: c.value >= c.target, progress: Math.min(1, c.value / c.target) })) };
+}
+
+function viewObjectives() {
+  if (!state.sessions.length) {
+    return `<h1 class="page-title">Objetivos</h1>${emptyState('Tus objetivos empiezan aquí', 'Apunta tu primera sesión y empezarás a completar objetivos y a ganar medallas.', '<a class="btn primary" href="#/nueva">Registrar sesión</a>', 'trophy')}`;
+  }
+  const ach = achievementsNow();
+  const got = ach.reduce((a, x) => a + x.level, 0);
+  const mc = monthlyChallenges();
+  const mDone = mc.list.filter((c) => c.done).length;
+  const inProgress = ach.filter((a) => !a.complete).sort((a, b) => b.progress - a.progress);
+  const medals = ach.flatMap((a) => a.tiers.slice(0, a.level).map((t, k) => ({ icon: a.icon, title: a.title, text: (a.doneUnit || a.unit)(t), lv: k + 1 }))).reverse();
+  const near = inProgress[0];
+  return `<section class="obj-hero">
+      <div class="obj-medal">🏅<b>${got}</b></div>
+      <div><p class="hero-k">Objetivos completados</p><h2>${got === 1 ? '¡Tu primera medalla!' : `${got} medallas`}</h2>
+        ${near ? `<small>Lo más cerca: ${esc(near.goal)}</small>` : ''}</div>
+    </section>
+
+    <div class="section-head"><h2 class="section-title">Retos de ${esc(mc.monthName)}</h2><span class="muted small">${mDone}/${mc.list.length}</span></div>
+    <p class="muted small sub">Se renuevan cada mes según tu nivel.</p>
+    <div class="list">${mc.list.map((c) => `<div class="card mch ${c.done ? 'done' : ''}" ${c.color ? `style="--mc:${esc(c.color)}"` : ''}>
+      <span class="mch-ic">${c.done ? '✅' : c.icon}</span>
+      <div class="mch-main"><b>${esc(c.title)}</b><div class="bar"><i style="width:${Math.round(c.progress * 100)}%"></i></div></div>
+      <span class="mch-n">${Math.min(c.value, c.target)}/${c.target}</span></div>`).join('')}</div>
+
+    <h2 class="section-title">Siguientes objetivos</h2>
+    <p class="muted small sub">Al completar uno aparece el siguiente nivel.</p>
+    <div class="ach-grid">${inProgress.map((a) => `<div class="ach ${a.level ? 'got' : ''}">
+      <div class="ach-top"><span class="ach-ic">${a.icon}</span>${a.level ? `<span class="ach-lv">Nivel ${a.level}</span>` : ''}</div>
+      <b>${esc(a.title)}</b>
+      <small class="ach-next">${esc(a.goal)}</small>
+      <div class="bar"><i style="width:${Math.round(a.progress * 100)}%"></i></div>
+    </div>`).join('')}</div>
+
+    ${medals.length ? `<div class="section-head"><h2 class="section-title">Completados</h2><span class="muted small">${medals.length}</span></div>
+    <div class="medals">${medals.map((m) => `<div class="medal"><span class="medal-ic">${m.icon}</span><b>${esc(m.title)}</b><small>${esc(m.text)}</small></div>`).join('')}</div>` : ''}`;
 }
 
 function progAchievements() {
@@ -1658,7 +1728,7 @@ const actions = {
   export: exportData,
   'hist-tab'(el) { state.ui.histTab = el.dataset.v || el.dataset.tab; state.ui.profTab = 'diario'; if (route() === 'perfil') rerender(); },
   'prof-tab'(el) { state.ui.profTab = el.dataset.v; rerender(); },
-  'prog-tab'(el) { state.ui.progTab = el.dataset.v === 'logros' ? 'logros' : 'resumen'; if (route() === 'progreso') rerender(); },
+  'prog-tab'(el, e) { if (el.dataset.v === 'logros') { e.preventDefault(); go('#/objetivos'); } },
   'prog-disc'(el) { state.ui.progDisc = el.dataset.v; rerender(); },
   async theme(el) { state.settings.theme = el.dataset.v; applyTheme(); await saveSettings(); rerender(); },
   photo(el) { openPhoto(el.dataset.id); },
