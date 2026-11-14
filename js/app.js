@@ -86,7 +86,6 @@ async function init() {
   document.addEventListener('input', onInput);
   document.addEventListener('change', onChange);
   window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); state.installEvt = e; if (route() === 'inicio') rerender(); });
-  setInterval(tickTimers, 1000);
   setupSheetGestures();
   render();
   document.body.classList.add('ready');
@@ -172,7 +171,6 @@ function render({ transition = false } = {}) {
       document.body.dataset.route = tab;
       if (!render.keepScroll) window.scrollTo(0, 0);
       render.keepScroll = false;
-      tickTimers();
     };
     if (transition && document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) document.startViewTransition(swap);
     else swap();
@@ -363,7 +361,7 @@ function viewHome() {
   const log = myLog();
   const live = pending ? `<a class="live-card" href="#/nueva">
       <span class="pulse"></span>
-      <div><b>Sesión en curso</b><small>${plural(pending.climbs.length, 'bloque apuntado', 'bloques apuntados')}${pending.startedAt ? ' · <span data-timer></span>' : ''}</small></div>
+      <div><b>Sesión en curso</b><small>${plural(pending.climbs.length, 'bloque apuntado', 'bloques apuntados')}</small></div>
       <span class="btn sm light">Continuar</span></a>` : '';
   return `<header class="home-head">
       <div><p class="eyebrow">${esc(now.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' }))}</p>
@@ -768,7 +766,7 @@ function climbRow(c) {
 // ---------------- Registrar sesión ----------------
 function newDraft() {
   const t = I.today();
-  return { id: uid(), isNew: true, date: t, kind: P.isPlannedDay(t, set()) ? 'class' : 'free', with: [], type: 'boulder', duration: 90, rpe: null, mood: null, notes: '', climbs: [], newPhotos: [], removedPhotos: [], startedAt: null };
+  return { id: uid(), isNew: true, date: t, kind: P.isPlannedDay(t, set()) ? 'class' : 'free', with: [], type: 'boulder', duration: 90, rpe: null, mood: null, notes: '', climbs: [], newPhotos: [], removedPhotos: [] };
 }
 
 function ensureDraft() {
@@ -800,7 +798,7 @@ function viewEditor(editId) {
   const friends = [...new Set(state.sessions.flatMap((x) => x.with || []))].filter((f) => !d.with.includes(f)).slice(0, 8);
   const topics = N.topicsOf(d.notes);
   return `<div class="topline"><button class="back" data-action="cancel-draft">${icon('back')} ${d.isNew ? 'Descartar' : 'Cancelar'}</button>
-      ${d.startedAt ? `<button class="timer-pill" data-action="timer">${icon('timer')} <span data-timer></span></button>` : (d.isNew ? `<button class="timer-pill off" data-action="timer">${icon('timer')} Cronómetro</button>` : '')}</div>
+</div>
     <h1 class="page-title">${d.isNew ? `Sesión ${esc(P.sessionOf(d.date))}` : 'Editar sesión'}</h1>
     <label class="date-line">${icon('calendar')} <span>${esc(dateLabel)}</span> <b>Cambiar</b><input type="date" data-field="date" value="${d.date}" max="${I.today()}" class="hidden-date"></label>
 
@@ -823,6 +821,7 @@ function viewEditor(editId) {
 
     <div class="card form">
       <div class="field"><span>¿Cómo te has sentido?</span><div class="moods">${M.MOODS.map((m, i) => `<button class="mood ${d.mood === i ? 'on' : ''}" data-action="set-mood" data-v="${i}">${m}</button>`).join('')}</div></div>
+      <div class="field"><span>¿Cuánto ha durado?</span><div class="chips dur">${[45, 60, 90, 120, 150, 180].map((m) => `<button class="chip ${Number(d.duration) === m ? 'on' : ''}" data-action="set-duration" data-v="${m}">${fmtMin(m)}</button>`).join('')}</div></div>
       <div class="field"><span>¿Cómo ha sido?</span><div class="seg">${Object.entries(EFFORT).map(([v, l]) => `<button class="${Number(d.rpe) === Number(v) ? 'on' : ''}" data-action="set-effort" data-v="${v}">${l}</button>`).join('')}</div></div>
     </div>
 
@@ -1261,7 +1260,7 @@ async function saveSession() {
     toast('Apunta al menos un bloque (o una nota)'); return;
   }
   const { isNew, newPhotos, removedPhotos, startedAt, ...session } = d;
-  if (startedAt) session.duration = Math.max(5, Math.round((Date.now() - startedAt) / 60000 / 5) * 5);
+  if (!session.duration) session.duration = 90;
   const discs = new Set(session.climbs.map((c) => c.discipline));
   session.type = discs.size > 1 ? 'mixed' : discs.has('route') ? 'route' : discs.has('boulder') ? 'boulder' : (state.ui.logDisc || 'boulder');
   if (!session.rpe) session.rpe = 6;
@@ -1407,7 +1406,6 @@ const actions = {
     d = ensureDraft();
     d.date = date; d.type = type; state.ui.logDisc = type; d.kind = P.isPlannedDay(date, set()) ? 'class' : 'free';
     const plan = P.planState(set(), state.sessions, null);
-    if (date === I.today() && !(plan.today?.after) && !d.startedAt) d.startedAt = Date.now();
     saveDraftSoon(); haptic();
     go('#/nueva');
   },
@@ -1432,7 +1430,7 @@ const actions = {
     setTimeout(() => URL.revokeObjectURL(url), 5000);
     toast('Abre el archivo para añadirlo a tu calendario');
   },
-  'start-session'() { const d = ensureDraft(); if (d && !d.startedAt && !d.climbs.length && d.date === I.today()) { d.startedAt = Date.now(); saveDraftSoon(); } },
+  'start-session'() { ensureDraft(); },
   export: exportData,
   'hist-tab'(el) { state.ui.histTab = el.dataset.v || el.dataset.tab; state.ui.profTab = 'diario'; if (route() === 'perfil') rerender(); },
   'prof-tab'(el) { state.ui.profTab = el.dataset.v; rerender(); },
@@ -1478,12 +1476,7 @@ const actions = {
     state.ui.logOpen = false; state.ui.routeRows = [];
     go(back);
   },
-  timer() {
-    const d = state.draft;
-    if (d.startedAt) { d.duration = Math.max(5, Math.round((Date.now() - d.startedAt) / 60000 / 5) * 5); d.startedAt = null; toast(`Cronómetro parado: ${fmtMin(d.duration)}`); }
-    else { d.startedAt = Date.now(); toast('¡A escalar! ⏱'); }
-    saveDraftSoon(); rerender();
-  },
+
   'set-kind'(el) { state.draft.kind = el.dataset.v; saveDraftSoon(); rerender(); },
   'with-add'(el) { addWith(el.dataset.v); },
   'with-solo'() { const d = state.draft; d.solo = !d.solo; if (d.solo) d.with = []; saveDraftSoon(); rerender(); },
@@ -1666,7 +1659,7 @@ function onInput(e) {
 async function onChange(e) {
   const el = e.target;
   if (el.dataset.field === 'date' && state.draft) {
-    if (el.value) { state.draft.date = el.value; if (el.value !== I.today()) state.draft.startedAt = null; saveDraftSoon(); rerender(); }
+    if (el.value) { state.draft.date = el.value; saveDraftSoon(); rerender(); }
     return;
   }
   if (el.hasAttribute('data-sch-time')) {
@@ -1718,13 +1711,6 @@ function setupSheetGestures() {
 }
 
 // ---------------- Utilidades UI ----------------
-function tickTimers() {
-  const d = state.draft?.isNew ? state.draft : state.stash;
-  if (!d?.startedAt) return;
-  const s = Math.floor((Date.now() - d.startedAt) / 1000);
-  const txt = `${Math.floor(s / 3600)}:${String(Math.floor(s / 60) % 60).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
-  document.querySelectorAll('[data-timer]').forEach((el) => { el.textContent = txt; });
-}
 
 function toast(msg, action) {
   const t = $('#toast');
