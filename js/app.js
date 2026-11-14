@@ -30,6 +30,7 @@ const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const set = () => state.settings;
 const plural = (n, a, b) => `${n} ${n === 1 ? a : b}`;
+const cap = (t) => (t ? t[0].toUpperCase() + t.slice(1) : t);
 const haptic = (ms = 8) => { try { navigator.vibrate?.(ms); } catch { /* sin soporte */ } };
 const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
@@ -182,6 +183,10 @@ const rerender = () => { render.keepScroll = true; render(); };
 const go = (hash) => { if (location.hash === hash) render(); else location.hash = hash; };
 
 // ---------------- Datos derivados ----------------
+// Las sesiones «de verdad». Los bloques apuntados por separado se guardan en registros
+// «sueltos» (loose) que cuentan para bloques, nivel y logros, pero no como sesión.
+const realSessions = () => state.sessions.filter((x) => !x.loose);
+const looseId = (date) => `loose-${date}`;
 const gymItems = () => (state.gym ? [...state.gym.boulders, ...state.gym.routes] : []);
 const findItem = (vlId) => gymItems().find((i) => i.vlId === vlId);
 
@@ -344,8 +349,8 @@ function itemTile(x, status, { inSession = null, showGrade = true } = {}) {
 
 // ---------------- Inicio ----------------
 function viewHome() {
-  const s = state.sessions;
-  if (!s.length && !set().onboarded) return viewOnboarding();
+  const s = realSessions();
+  if (!state.sessions.length && !set().onboarded) return viewOnboarding();
   const name = set().name?.trim();
   const now = new Date();
   const wk = I.weekStart(now).getTime();
@@ -644,6 +649,7 @@ function viewProfile() {
   const st = set();
   const ss = state.sessions;
   const first = ss.length ? I.sortSessions(ss)[ss.length - 1].date : null;
+  const nReal = realSessions().length;
   const sent = I.allClimbs(ss).filter((c) => M.isSent(c) && c.discipline === 'boulder');
   const best = sent.length ? sent.reduce((m, c) => (c.grade > m.grade ? c : m)) : null;
   const ach = achievementsNow();
@@ -655,7 +661,7 @@ function viewProfile() {
       <p class="prof-sub">${first ? `Escalando desde ${esc(I.parseDate(first).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }))}` : 'Bienvenida a tu cuaderno'} · ${esc(S.GYM.name.replace('Sharma Climbing', 'Sharma'))}</p>
       ${best ? `<div class="prof-level">Nivel ${gradeChip(best, 'sm')}</div>` : ''}
       <div class="prof-stats">
-        <div><b>${ss.length}</b><span>sesiones</span></div>
+        <div><b>${nReal}</b><span>sesiones</span></div>
         <div><b>${I.allClimbs(ss).filter(M.isSent).length}</b><span>conseguidos</span></div>
         <div><b>${got}</b><span>logros</span></div>
       </div>
@@ -665,7 +671,17 @@ function viewProfile() {
       <a class="card prof-link" href="#/progreso" data-action="prog-tab" data-v="logros">${icon('trophy')}<span><b>Tus logros</b><small>${got} conseguidos</small></span>${icon('chevron', 'muted')}</a>
     </div>
     <h2 class="section-title">Mis sesiones</h2>
-    ${historyBody()}`;
+    ${historyBody()}
+    ${looseSection()}`;
+}
+
+// Bloques apuntados fuera de una sesión, agrupados por día.
+function looseSection() {
+  const loose = I.sortSessions(state.sessions.filter((x) => x.loose && (x.climbs || []).length));
+  if (!loose.length) return '';
+  return `<h2 class="section-title">Apuntados por separado</h2>
+    <p class="muted small sub">Bloques que marcaste desde la Sala, sin sesión. Para borrar uno, ábrelo en la Sala.</p>
+    ${loose.slice(0, 12).map((x) => `<h3 class="month">${esc(cap(P.niceDate(x.date, false)))}</h3><div class="list">${x.climbs.slice().reverse().map(climbRow).join('')}</div>`).join('')}`;
 }
 
 function historyBody() {
@@ -676,13 +692,13 @@ function historyBody() {
     return `${tabs}${photos.length ? `<div class="gallery">${photos.map((p) => `<button class="thumb" data-action="photo" data-id="${p.id}"><img src="${photoURL(p.id)}" alt="" loading="lazy"></button>`).join('')}</div>`
       : emptyState('Sin fotos todavía', 'Puedes añadir fotos al apuntar una sesión.', '', 'camera')}`;
   }
-  const list = I.sortSessions(state.sessions);
+  const list = I.sortSessions(realSessions());
   const groups = {};
   list.forEach((x) => { const k = x.date.slice(0, 7); (groups[k] ||= []).push(x); });
   return `${list.length ? tabs : ''}
     ${list.length ? Object.entries(groups).map(([k, ss]) => {
       const [y, m] = k.split('-').map(Number);
-      const label = new Date(y, m - 1, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+      const label = cap(new Date(y, m - 1, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }));
       return `<h2 class="month">${label} <span class="muted">${plural(ss.length, 'sesión', 'sesiones')}</span></h2><div class="list">${ss.map(sessionCard).join('')}</div>`;
     }).join('') : emptyState('Aún no hay sesiones', 'Cuando apuntes tu primera sesión aparecerá aquí.', '<a class="btn primary" href="#/nueva">Registrar sesión</a>', 'book')}`;
 }
@@ -950,15 +966,19 @@ function statusButtons(action, id, current, extra = '') {
 }
 
 // Ficha de un bloque de la sala: foto, estado y botones para apuntarlo.
-async function openItemSheet(vlId) {
+async function openItemSheet(vlId, keepDate = false) {
   const x = findItem(vlId);
-  const inDraft = state.draft?.climbs.find((c) => c.vlId === vlId);
+  const editing = route() === 'nueva' && !!state.draft;
+  if (!keepDate) state.looseDate = I.today();
+  state.sheetItem = vlId;
+  const looseRec = state.sessions.find((r) => r.id === looseId(state.looseDate));
+  const inDraft = editing ? state.draft.climbs.find((c) => c.vlId === vlId) : looseRec?.climbs.find((c) => c.vlId === vlId);
   if (!x && !inDraft) return;
   const item = x || { vlId, kind: inDraft.discipline, number: inDraft.vlNumber, hold: inDraft.holdName, holdColor: inDraft.holdColor, grade: M.gradeLabel(inDraft, set()), sector: inDraft.zone, sectorId: null, date: 0 };
   const isRoute = item.kind === 'route';
   const before = (() => { // historial sin contar la sesión abierta
     let best = null; let n = 0; let sentOn = null;
-    for (const s of state.sessions) for (const c of s.climbs || []) if (c.vlId === vlId && s.id !== state.draft?.id) { n++; if (M.RESULTS[c.result]?.sent) { best = 'sent'; if (!sentOn || s.date < sentOn) sentOn = s.date; } else if (!best) best = 'trying'; }
+    for (const s of state.sessions) for (const c of s.climbs || []) if (c.vlId === vlId && s.id !== (editing ? state.draft?.id : looseId(state.looseDate))) { n++; if (M.RESULTS[c.result]?.sent) { best = 'sent'; if (!sentOn || s.date < sentOn) sentOn = s.date; } else if (!best) best = 'trying'; }
     return { best, n, sentOn };
   })();
   const fake = climbFromGym(item);
@@ -971,9 +991,10 @@ async function openItemSheet(vlId) {
         <small class="muted">Presa ${esc(S.holdName(item.hold)).toLowerCase()}${item.date ? ` · montado ${ago(item.date)}` : ''}</small>
         ${before.best ? `<div class="hist-line st-text-${before.best === 'sent' ? 'send' : 'proj'}">${icon(before.best === 'sent' ? 'check' : 'refresh', 'inline')} ${before.best === 'sent' ? `Ya lo conseguiste ${esc(P.niceDate(before.sentOn))}` : `Lo has intentado ${plural(before.n, 'vez', 'veces')}`}</div>` : ''}</div></div>
       ${detail === undefined ? '<div class="skel tall"></div>' : detail?.wall ? S.topoHTML(detail.wall, item.holdColor, { label: isRoute ? 'Línea de la vía en el muro' : 'Dónde está en el muro', line: isRoute }) : ''}
-      <div class="ask"><b>¿Cómo te ha ido ${esc(whenText(state.draft))}?</b></div>
+      <div class="ask"><b>¿Cómo te ha ido ${esc(editing ? whenText(state.draft) : whenText({ isNew: true, date: state.looseDate }))}?</b></div>
+      ${editing ? '' : `<label class="date-line small-date">${icon('calendar')} <span>${esc(P.niceDate(state.looseDate, false) === 'hoy' ? 'Hoy' : P.niceDate(state.looseDate, false))}</span> <b>Cambiar día</b><input type="date" data-loose-date value="${state.looseDate}" max="${I.today()}" class="hidden-date"></label>`}
       ${statusButtons('item-log', vlId, inDraft?.result)}
-      ${inDraft ? `<button type="button" class="link muted-link" data-action="item-remove" data-id="${esc(vlId)}">Quitar de la sesión</button>` : ''}
+      ${inDraft ? `<button type="button" class="link muted-link" data-action="item-remove" data-id="${esc(vlId)}">${editing ? 'Quitar de la sesión' : 'Quitar'}</button>` : ''}
       ${before.n ? `<button type="button" class="btn ghost danger sm forget" data-action="item-forget" data-id="${esc(vlId)}">${icon('trash')} ¿Te equivocaste? Borrarlo de tus sesiones</button>` : ''}
       ${detail?.map ? `<details class="map-mini"><summary>${icon('map')} Ver en el plano de la sala</summary>${S.topoHTML(detail.map, '#ff5a1f', { cls: 'small' })}</details>` : ''}
     </div></div>`;
@@ -1147,7 +1168,7 @@ function progSummary() {
     ${prog.length ? `<div class="card"><h3>Lo que hay ahora en la sala</h3><div class="rings">${prog.map((p) => `<div class="cring">${ringColor(p.done, p.total, p.color)}<span>${esc(p.name)}</span><small>${p.done}/${p.total}</small></div>`).join('')}</div></div>` : ''}
     <div class="card"><h3>Tu nivel cada semana</h3>${C.weeklyBars(weeks, label, color, best?.grade ?? 0)}</div>
     ${used.length ? `<div class="card"><h3>Por ${disc === 'route' ? 'grado' : 'color'}</h3>${C.colorBars(used)}</div>` : ''}
-    <div class="card"><h3>Días que has escalado</h3><div class="scroll-x">${C.calendarHeatmap(s)}</div></div>
+    <div class="card"><h3>Días que has escalado</h3><div class="scroll-x">${C.calendarHeatmap(realSessions())}</div></div>
     ${topicsCard()}
     ${trying.length ? `<div class="card"><h3>${icon('refresh')} Estás intentando</h3><p class="muted small">Siguen montados en la sala: ¡la próxima vez saldrán!</p><div class="tile-grid">${trying.map((x) => itemTile(x, itemStatus(log.get(x.vlId)))).join('')}</div></div>` : ''}`;
 }
@@ -1230,7 +1251,7 @@ function viewSettings() {
         ${demoCount ? `<button class="btn ghost" data-action="demo-clear">Quitar datos de ejemplo (${demoCount})</button>` : '<button class="btn ghost" data-action="demo">Cargar datos de ejemplo</button>'}
         <button class="btn danger ghost" data-action="wipe">${icon('trash')} Borrar todo y empezar de cero</button>
       </div>
-      <p class="muted small">${plural(state.sessions.length, 'sesión', 'sesiones')} · ${plural(state.photos.size, 'foto', 'fotos')}${state.persisted ? ' · ✓ guardado de forma permanente en este móvil' : ''}${set().lastBackup ? ` · última copia ${ago(set().lastBackup)}` : ''}</p>
+ <p class="muted small">${plural(realSessions().length, 'sesión', 'sesiones')} · ${plural(state.photos.size, 'foto', 'fotos')}${state.persisted ? ' · ✓ guardado de forma permanente en este móvil' : ''}${set().lastBackup ? ` · última copia ${ago(set().lastBackup)}` : ''}</p>
     </div>
     <p class="muted small center about">Mi Escalada · app no oficial, sin relación con Sharma Climbing.<br>Los bloques y vías de la sala proceden del widget público de Vertical-Life.</p>`;
 }
@@ -1309,6 +1330,32 @@ async function addPhotos(files) {
     d.newPhotos.push({ id: uid(), blob, climbId: null, createdAt: Date.now() });
   }
   saveDraftSoon();
+}
+
+// Guarda un bloque de la sala sin sesión (registro «suelto» del día).
+async function logLoose(vlId, status) {
+  const x = findItem(vlId); if (!x) return;
+  const date = state.looseDate || I.today();
+  let rec = state.sessions.find((r) => r.id === looseId(date));
+  if (!rec) { rec = { id: looseId(date), loose: true, date, climbs: [], createdAt: Date.now() }; state.sessions.push(rec); }
+  let c = rec.climbs.find((y) => y.vlId === vlId);
+  if (!c) { c = climbFromGym(x); rec.climbs.push(c); }
+  c.result = status; c.attempts = status === 'flash' ? 1 : status === 'send' ? 2 : 3;
+  rec.updatedAt = Date.now();
+  await db.put('sessions', rec);
+  protectStorage();
+  haptic(12);
+  const fresh = checkNewAchievements();
+  if (fresh) celebrate();
+  toast(fresh ? `🏅 ¡Nuevo logro! ${fresh.title} · ${fresh.done}` : `${STATUS[status].label} · ${c.vlNumber || ''} ${M.gradeLabel(c, set())} guardado`);
+}
+
+async function removeLoose(vlId) {
+  const rec = state.sessions.find((r) => r.id === looseId(state.looseDate || I.today()));
+  if (!rec) return;
+  rec.climbs = rec.climbs.filter((c) => c.vlId !== vlId);
+  if (rec.climbs.length) await db.put('sessions', rec);
+  else { await db.del('sessions', rec.id); state.sessions = state.sessions.filter((r) => r !== rec); }
 }
 
 // Apunta (o actualiza) un bloque de la sala en la sesión abierta.
@@ -1417,7 +1464,7 @@ const actions = {
     if (d && d.climbs.length && d.date !== date) { toast('Ya tienes una sesión abierta: termínala primero'); go('#/nueva'); return; }
     d = ensureDraft();
     d.date = date; d.type = type; state.ui.logDisc = type; d.kind = P.isPlannedDay(date, set()) ? 'class' : 'free';
-    const plan = P.planState(set(), state.sessions, null);
+    const plan = P.planState(set(), realSessions(), null);
     saveDraftSoon(); haptic();
     go('#/nueva');
   },
@@ -1458,7 +1505,10 @@ const actions = {
     if (!armed(el, '¿Seguro? Toca otra vez para borrarlo')) return;
     const id = el.dataset.id; const changed = [];
     state.sessions.forEach((s) => { const n = (s.climbs || []).length; s.climbs = (s.climbs || []).filter((c) => c.vlId !== id); if (s.climbs.length !== n) changed.push(s); });
-    if (changed.length) await db.putMany('sessions', changed);
+    const empty = changed.filter((x) => x.loose && !x.climbs.length);
+    if (empty.length) { await db.delMany('sessions', empty.map((x) => x.id)); state.sessions = state.sessions.filter((x) => !empty.includes(x)); }
+    const keep = changed.filter((x) => !empty.includes(x));
+    if (keep.length) await db.putMany('sessions', keep);
     if (state.draft) { state.draft.climbs = state.draft.climbs.filter((c) => c.vlId !== id); saveDraftSoon(); }
     closeSheet(); toast('Borrado de tus sesiones'); rerender();
   },
@@ -1541,10 +1591,17 @@ const actions = {
   'log-circuit'(el) { state.ui.logCircuit = el.dataset.v; state.ui.logSector = 'all'; rerender(); },
   'log-sector'(el) { state.ui.logSector = el.dataset.v; rerender(); },
   item(el) { openItemSheet(el.dataset.id); },
-  'item-log'(el) { logItem(el.dataset.id, el.dataset.v); closeSheet(); rerender(); },
-  'item-remove'(el) {
-    const d = state.draft; d.climbs = d.climbs.filter((c) => c.vlId !== el.dataset.id);
-    saveDraftSoon(); closeSheet(); rerender();
+  async 'item-log'(el) {
+    if (route() === 'nueva' && state.draft) logItem(el.dataset.id, el.dataset.v);
+    else await logLoose(el.dataset.id, el.dataset.v);
+    closeSheet(); rerender();
+  },
+  async 'item-remove'(el) {
+    if (route() === 'nueva' && state.draft) {
+      const d = state.draft; d.climbs = d.climbs.filter((c) => c.vlId !== el.dataset.id);
+      saveDraftSoon();
+    } else await removeLoose(el.dataset.id);
+    closeSheet(); rerender();
   },
   'add-generic'(el) {
     ensureDraft();
@@ -1672,6 +1729,10 @@ async function onChange(e) {
   const el = e.target;
   if (el.dataset.field === 'date' && state.draft) {
     if (el.value) { state.draft.date = el.value; saveDraftSoon(); rerender(); }
+    return;
+  }
+  if (el.hasAttribute('data-loose-date')) {
+    if (el.value && el.value <= I.today()) { state.looseDate = el.value; openItemSheet(state.sheetItem, true); }
     return;
   }
   if (el.hasAttribute('data-sch-time')) {
