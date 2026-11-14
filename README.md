@@ -23,7 +23,7 @@ Funciona en el móvil, se puede instalar en la pantalla de inicio y funciona sin
 - **Fotos** de la sesión o de cada bloque/vía (se comprimen automáticamente).
 - **Progreso**: evolución de grado semanal, pirámide de grados, volumen, calendario, estilos fuertes y débiles, proyectos abiertos y encadenados.
 - **Consejos automáticos**: racha, cargas altas (riesgo de lesión), estilos olvidados, nuevo máximo, siguiente grado a probar…
-- **Bienvenida**, objetivo semanal con anillo de progreso, **cronómetro** de sesión y aviso para instalarla.
+- **Bienvenida**, objetivo semanal con anillo de progreso y aviso para instalarla.
 - **Logros** desbloqueables y **compartir** el resumen de una sesión.
 - **Copia de seguridad** (descargar/restaurar, fotos incluidas) y **datos de ejemplo** para probarla.
 
