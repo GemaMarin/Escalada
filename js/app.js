@@ -682,9 +682,46 @@ function viewProfile() {
       <a class="card prof-link" href="#/progreso" data-action="prog-tab" data-v="resumen">${icon('chart')}<span><b>Tu progreso</b><small>Nivel, colores y semanas</small></span>${icon('chevron', 'muted')}</a>
       <a class="card prof-link" href="#/progreso" data-action="prog-tab" data-v="logros">${icon('trophy')}<span><b>Tus logros</b><small>${got} conseguidos</small></span>${icon('chevron', 'muted')}</a>
     </div>
+    ${monthCalendar()}
     <div class="section-head"><h2 class="section-title">Mis sesiones</h2><button class="link" data-action="past-session">${icon('plus')} Añadir sesión pasada</button></div>
     ${historyBody()}
     ${looseSection()}`;
+}
+
+// Calendario del mes con los días de clase, libres y bloques sueltos.
+function monthCalendar() {
+  const now = new Date();
+  const cur = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const ym = state.ui.calMonth || cur;
+  const [y, m] = ym.split('-').map(Number);
+  const first = new Date(y, m - 1, 1);
+  const days = new Date(y, m, 0).getDate();
+  const offset = (first.getDay() + 6) % 7;
+  const byDay = {};
+  state.sessions.forEach((x) => {
+    if (!x.date.startsWith(ym)) return;
+    const b = (byDay[x.date] ||= { cls: 0, free: 0, loose: 0 });
+    if (x.loose) { if ((x.climbs || []).length) b.loose++; } else if (x.kind === 'free') b.free++; else b.cls++;
+  });
+  const tot = Object.values(byDay).reduce((a, b) => ({ cls: a.cls + b.cls, free: a.free + b.free }), { cls: 0, free: 0 });
+  const t = I.today();
+  const cells = [];
+  for (let i = 0; i < offset; i++) cells.push('<span class="cd empty"></span>');
+  for (let dd = 1; dd <= days; dd++) {
+    const iso = `${ym}-${String(dd).padStart(2, '0')}`;
+    const b = byDay[iso];
+    const kind = b ? (b.cls && b.free ? 'both' : b.cls ? 'cls' : b.free ? 'free' : '') : '';
+    const cls = ['cd', kind, b?.loose ? 'loose' : '', iso === t ? 'today' : '', iso > t ? 'future' : ''].filter(Boolean).join(' ');
+    cells.push(b ? `<button class="${cls}" data-action="cal-day" data-v="${iso}" aria-label="${dd}">${dd}</button>` : `<span class="${cls}">${dd}</span>`);
+  }
+  const label = cap(first.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }));
+  return `<div class="card cal">
+    <div class="cal-head"><button class="icon-btn ghost" data-action="cal-nav" data-d="-1" aria-label="Mes anterior">${icon('back')}</button>
+      <b>${esc(label)}</b>
+      <button class="icon-btn ghost" data-action="cal-nav" data-d="1" aria-label="Mes siguiente" ${ym >= cur ? 'disabled' : ''}>${icon('chevron')}</button></div>
+    <div class="cal-grid">${['L', 'M', 'X', 'J', 'V', 'S', 'D'].map((w) => `<span class="cw">${w}</span>`).join('')}${cells.join('')}</div>
+    <div class="cal-foot"><span><i class="k cls"></i>Clase${tot.cls ? ` · ${tot.cls}` : ''}</span><span><i class="k free"></i>Libre${tot.free ? ` · ${tot.free}` : ''}</span><span><i class="k dot"></i>Bloques sueltos</span></div>
+  </div>`;
 }
 
 // Bloques apuntados fuera de una sesión, agrupados por día.
@@ -1669,6 +1706,26 @@ const actions = {
   },
 
   'set-date'(el) { applyDraftDate(el.dataset.v); },
+  'cal-nav'(el) {
+    const now = new Date();
+    const [y, m] = (state.ui.calMonth || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`).split('-').map(Number);
+    const d = new Date(y, m - 1 + Number(el.dataset.d), 1);
+    state.ui.calMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    haptic(); rerender();
+  },
+  'cal-day'(el) {
+    const iso = el.dataset.v;
+    const ss = realSessions().filter((x) => x.date === iso);
+    const loose = state.sessions.find((x) => x.loose && x.date === iso && (x.climbs || []).length);
+    if (ss.length === 1 && !loose) { go(`#/sesion/${ss[0].id}`); return; }
+    openSheet(`<div class="sheet">
+      <div class="grabber"></div>
+      <div class="sheet-head"><span></span><b>${esc(cap(I.parseDate(iso).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })))}</b><button class="link" data-action="close-sheet" type="button">Cerrar</button></div>
+      <div class="sheet-body">
+        ${ss.length ? `<div class="list">${ss.map(sessionCard).join('')}</div>` : ''}
+        ${loose ? `<b>Bloques apuntados por separado</b><div class="list">${loose.climbs.map(climbRow).join('')}</div>` : ''}
+      </div></div>`);
+  },
   'past-session'() {
     const d = ensureDraft();
     if (d.climbs.length && d.date === I.today()) { toast('Tienes una sesión abierta: cambia su fecha en «¿Cuándo fue?»'); go('#/nueva'); return; }
@@ -1898,6 +1955,7 @@ function refreshPlanUI() {
 }
 
 function onClick(e) {
+  if (e.target.closest('#sheet a.session-card')) closeSheet();
   const el = e.target.closest('[data-action]');
   if (!el) return;
   const fn = actions[el.dataset.action];
