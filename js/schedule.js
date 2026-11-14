@@ -92,3 +92,8 @@ export function scheduleICS(settings) {
   lines.push('END:VCALENDAR');
   return lines.join('\r\n');
 }
+
+export function isPlannedDay(iso, settings) {
+  const sch = settings.schedule || { days: [4], time: '19:00' };
+  return isPlanned(iso, { ...sch, extraDates: settings.extraDates || [] });
+}

@@ -593,6 +593,74 @@ details.card[open] > summary { margin-bottom: 10px; }
 .legend i.tried-k { background: repeating-linear-gradient(135deg, var(--muted) 0 3px, transparent 3px 6px); }
 .chart .axis.strong { fill: var(--text); font-weight: 700; font-size: 11px; }
 
+/* ============ Registro por contadores ============ */
+.kind-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.kind { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 14px; border-radius: 18px; border: 2px solid var(--border); background: var(--surface); cursor: pointer; font-size: 16px; }
+.kind span { font-size: 22px; }
+.kind.on { border-color: var(--accent); background: var(--accent-soft); }
+.with-card { display: grid; gap: 10px; }
+.with-card .chip .ic { width: 13px; height: 13px; }
+.with-input { display: flex; gap: 8px; }
+.with-input input { flex: 1; }
+.counts { display: grid; gap: 4px; padding: 14px 12px; }
+.counts-head { display: grid; grid-template-columns: 1fr 112px 112px; align-items: end; gap: 8px; padding: 0 4px 6px; }
+.counts-head b { font-size: 17px; }
+.ch-k { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 11.5px; font-weight: 650; color: var(--muted); }
+.ch-k i { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; color: #fff; }
+.ch-k i .ic { width: 13px; height: 13px; stroke-width: 3; }
+.k-send { background: var(--good); }
+.k-proj { background: var(--accent-2); }
+.crow { display: grid; grid-template-columns: 1fr 112px 112px; align-items: center; gap: 8px; padding: 6px 4px; border-radius: 14px; }
+.crow.active { background: var(--surface-2); }
+.crow .grade { justify-self: start; }
+.ctr { display: grid; grid-template-columns: 34px 1fr 34px; align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; height: 40px; overflow: hidden; }
+.ctr button { display: grid; place-items: center; height: 100%; border: 0; background: none; cursor: pointer; color: var(--text); }
+.ctr button .ic { width: 18px; height: 18px; stroke-width: 2.4; }
+.ctr button:disabled { color: var(--surface-3); }
+.ctr button:active:not(:disabled) { background: var(--surface-2); }
+.ctr b { text-align: center; font-size: 17px; font-variant-numeric: tabular-nums; color: var(--muted); }
+.ctr.send.has { border-color: var(--good); }
+.ctr.send.has b { color: var(--good); }
+.ctr.proj.has { border-color: var(--accent-2); }
+.ctr.proj.has b { color: var(--accent-2); }
+.counts-sum { margin: 8px 4px 0; font-size: 14px; color: var(--muted); }
+.counts-sum b { color: var(--text); }
+.add-grade { display: grid; gap: 6px; margin-top: 8px; padding: 0 4px; }
+.add-grade .chips.scroll { margin: 0 -16px; }
+.picker-box > summary { display: flex; align-items: center; gap: 12px; }
+.picker-box > summary > .ic:first-child { width: 26px; height: 26px; color: var(--accent); }
+.picker-box > summary span { flex: 1; display: grid; }
+.picker-box > summary small { color: var(--muted); font-size: 13px; }
+.picker-box > summary .chev { width: 18px; height: 18px; color: var(--muted); transition: transform .2s; }
+.picker-box[open] > summary .chev { transform: rotate(90deg); }
+.notes-card { display: grid; gap: 10px; }
+.note-topics { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 0; }
+.notes .note-topics { margin-top: 10px; }
+.topic { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 999px; background: var(--surface-2); font-size: 13px; font-weight: 600; }
+.topic.t-molestias { background: #fde8e8; color: #9b1c1c; }
+.topic.t-logro { background: var(--good-soft); color: #14532d; }
+.topic.t-cabeza { background: #ede9fe; color: #4c1d95; }
+.with-line { margin: 4px 0 0 !important; color: var(--muted); }
+.drow { display: grid; grid-template-columns: 1fr 64px 64px; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--border); font-weight: 700; }
+.drow:first-of-type { border-top: 0; }
+.drow .grade { justify-self: start; }
+.next-card { display: grid; gap: 12px; background: linear-gradient(135deg, #fff7ed, #fff); border-color: #fed7aa; }
+.nc-head { display: flex; align-items: center; gap: 8px; }
+.nc-head .ic { color: var(--warn); }
+.nc-row { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 10px; }
+.nc { display: grid; justify-items: start; gap: 6px; padding: 10px 12px; border-radius: 14px; background: rgb(255 255 255 / .7); border: 1px solid var(--border); }
+.nc .grade { height: 36px; font-size: 16px; padding: 0 16px; }
+.nc-k { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.nc small { color: var(--muted); font-size: 12.5px; }
+.tip { background: #f0f9ff; border-color: #bae6fd; }
+.tip-head { display: flex; justify-content: space-between; align-items: center; }
+.tip-cat { font-weight: 700; font-size: 14px; color: #075985; }
+.tip p { margin: 6px 0 0; line-height: 1.5; }
+:root[data-theme="dark"] .next-card { background: linear-gradient(135deg, #2b1d10, var(--surface)); border-color: #4a3216; }
+:root[data-theme="dark"] .nc { background: rgb(0 0 0 / .2); }
+:root[data-theme="dark"] .tip { background: #0f2230; border-color: #173a52; }
+:root[data-theme="dark"] .tip-cat { color: #7dd3fc; }
+
 /* ============ Esqueletos ============ */
 .skeleton-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
 .skel { height: 64px; border-radius: 16px; background: var(--surface-2); position: relative; overflow: hidden; }

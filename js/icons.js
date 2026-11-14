@@ -3,6 +3,7 @@ const P = {
   home: '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"/>',
   book: '<path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H20v15H5.5A1.5 1.5 0 0 0 4 19.5z"/><path d="M4 19.5A1.5 1.5 0 0 0 5.5 21H20"/><path d="M8 7h8M8 11h6"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  minus: '<path d="M5 12h14"/>',
   wall: '<path d="M4 21V5l8-2 8 2v16"/><circle cx="9" cy="8" r="1.2"/><circle cx="15" cy="10" r="1.2"/><circle cx="10" cy="13.5" r="1.2"/><circle cx="14.5" cy="16.5" r="1.2"/>',
   chart: '<path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 6-7"/>',
   body: '<circle cx="12" cy="4.5" r="2"/><path d="M5 8.5 12 9l7-.5M12 9v6m0 0-3 6m3-6 3 6"/>',
