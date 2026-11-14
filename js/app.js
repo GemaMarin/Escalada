@@ -259,6 +259,7 @@ const itemGradeColor = (x) => {
 
 // ---------------- Componentes ----------------
 function gradeChip(c, size = '') {
+  if (c.gymColor) return `<span class="grade ${size}" style="${C.gradeStyle(c.gymColorHex || '#999')}">${esc(c.gymColor)}</span>`;
   const g = M.boulderScale(set())[c.grade];
   return `<span class="grade ${size}${c.discipline !== 'route' && g?.joker ? ' joker' : ''}" style="${C.gradeStyle(M.gradeColor(c, set()))}">${esc(M.gradeLabel(c, set()))}</span>`;
 }
@@ -285,6 +286,15 @@ const sessionPhotos = (sid) => [...state.photos.values()].filter((p) => p.sessio
 const TYPE_LABEL = { boulder: 'Bloque', route: 'Vías', mixed: 'Bloque y vías', training: 'Entreno' };
 const titleOf = (s) => `${s.kind === 'free' ? 'Sesión libre' : s.kind === 'class' ? 'Clase' : 'Sesión'} · ${(TYPE_LABEL[s.type] || 'escalada').toLowerCase()}`;
 const gymOf = (s) => (s.where === 'other' && s.gym ? s.gym : S.GYM.name);
+// Colores (circuito) de otros rocódromos, de más fácil a más difícil, con su equivalente del Sharma.
+const gymKey = (name) => (name || '').trim().replace(/\s+/g, ' ').toLowerCase();
+const gymCircuit = (name) => set().otherGyms?.[gymKey(name)] || null;
+const sharmaRegular = () => M.boulderScale(set()).map((g, i) => ({ ...g, i })).filter((g) => !g.joker);
+function defaultEq(pos, n) {
+  const reg = sharmaRegular();
+  return reg[Math.round((pos * (reg.length - 1)) / Math.max(1, n - 1))]?.i ?? 0;
+}
+const COMMON_COLORS = [['Blanco', '#f4f4f5'], ['Amarillo', '#facc15'], ['Naranja', '#f97316'], ['Verde', '#16a34a'], ['Azul', '#2563eb'], ['Rojo', '#dc2626'], ['Rosa', '#ec4899'], ['Morado', '#7c3aed'], ['Marrón', '#92400e'], ['Gris', '#6b7280'], ['Negro', '#18181b']];
 const otherGyms = () => [...new Set(state.sessions.filter((x) => x.where === 'other' && x.gym).map((x) => x.gym))];
 const fmtMin = (m) => (m >= 60 ? `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60}` : ''}` : `${m} min`);
 const ago = (ts) => {
@@ -717,7 +727,7 @@ function viewDetail(id) {
   const date = I.parseDate(s.date).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const topics = s.topics || N.topicsOf(s.notes);
   const byGrade = {};
-  climbs.forEach((c) => { const k = `${c.discipline}|${c.grade}`; const r = (byGrade[k] ||= { c, sent: 0, tried: 0 }); if (M.isSent(c)) r.sent++; else r.tried++; });
+  climbs.forEach((c) => { const k = `${c.discipline}|${c.gymColor ? `gc:${c.gymColor}` : c.grade}`; const r = (byGrade[k] ||= { c, sent: 0, tried: 0 }); if (M.isSent(c)) r.sent++; else r.tried++; });
   const rows = Object.values(byGrade).sort((a, b) => a.c.discipline.localeCompare(b.c.discipline) || b.c.grade - a.c.grade);
   return `<div class="topline"><a href="#/diario" class="back">${icon('back')} Mis sesiones</a>
       <a class="btn sm" href="#/editar/${s.id}">${icon('edit')} Editar</a></div>
@@ -731,7 +741,7 @@ function viewDetail(id) {
     </section>
     <button class="btn share-btn block" data-action="share-img" data-id="${s.id}">${icon('camera')} Crear imagen para compartir</button>
     ${rows.length ? `<div class="card"><h3>Por ${rows.some((r) => r.c.discipline === 'route') && !rows.some((r) => r.c.discipline === 'boulder') ? 'grado' : 'color'}</h3>
-      ${rows.map((r) => `<div class="drow">${gradeChip(r.c, 'sm')}<span class="st-text-send">${r.sent ? `${icon('check', 'inline')} ${r.sent}` : ''}</span><span class="st-text-proj">${r.tried ? `${icon('refresh', 'inline')} ${r.tried}` : ''}</span></div>`).join('')}</div>` : ''}
+      ${rows.map((r) => `<div class="drow">${r.c.gymColor ? `<span class="eqwrap">${gradeChip(r.c, 'sm')}<small>≈ ${esc(M.gradeLabel({ discipline: 'boulder', grade: r.c.grade }, set()))}</small></span>` : gradeChip(r.c, 'sm')}<span class="st-text-send">${r.sent ? `${icon('check', 'inline')} ${r.sent}` : ''}</span><span class="st-text-proj">${r.tried ? `${icon('refresh', 'inline')} ${r.tried}` : ''}</span></div>`).join('')}</div>` : ''}
     ${s.notes ? `<div class="card notes">${esc(s.notes).replace(/\n/g, '<br>')}${topics.length ? `<div class="note-topics">${N.topicChips(topics)}</div>` : ''}</div>` : ''}
     ${specific.length ? `<h2 class="section-title">Bloques de la sala</h2><div class="list">${specific.map(climbRow).join('')}</div>` : ''}
     ${photos.length ? `<h2 class="section-title">Fotos</h2><div class="gallery">${photos.map((p) => `<button class="thumb" data-action="photo" data-id="${p.id}"><img src="${photoURL(p.id)}" alt=""></button>`).join('')}</div>` : ''}
@@ -753,7 +763,7 @@ async function shareSessionImage(id, opts = {}) {
   const climbs = s.climbs || [];
   const disc = climbs.some((c) => c.discipline === 'boulder') ? 'boulder' : 'route';
   const by = {};
-  climbs.filter((c) => c.discipline === disc).forEach((c) => { const r = (by[c.grade] ||= { label: M.gradeLabel(c, set()), color: toHex(M.gradeColor(c, set())), sent: 0, tried: 0, g: c.grade }); if (M.isSent(c)) r.sent++; else r.tried++; });
+  climbs.filter((c) => c.discipline === disc).forEach((c) => { const r = (by[c.gymColor ? `gc:${c.gymColor}` : c.grade] ||= { label: c.gymColor || M.gradeLabel(c, set()), color: toHex(c.gymColorHex || M.gradeColor(c, set())), sent: 0, tried: 0, g: c.grade + (c.gymColor ? 0.5 : 0) }); if (M.isSent(c)) r.sent++; else r.tried++; });
   const sent = climbs.filter(M.isSent);
   const best = [...sent].sort((a, b) => (a.discipline === b.discipline ? b.grade - a.grade : a.discipline === disc ? -1 : 1))[0];
   const blob = await sessionImage({
@@ -907,6 +917,7 @@ function viewEditor(editId) {
 // Contadores rápidos por color (bloque) o grado (vía): conseguidos e intentados.
 function countsCard(disc) {
   const d = state.draft;
+  if (disc === 'boulder' && d.kind === 'free' && d.where === 'other') return otherCountsCard(d);
   const mine = d.climbs.filter((c) => c.discipline === disc);
   const cnt = (g, sent) => mine.filter((c) => c.grade === g && M.isSent(c) === sent).length;
   let grades;
@@ -940,6 +951,60 @@ function countsCard(disc) {
       return `<div class="crow inv-row ${inv.length ? 'active' : ''}"><span class="inv-label"><b>✏️ Inventado</b><small>libre del profe</small></span>${c2(true, n1)}${c2(false, n2)}</div>`; })()}
     ${mine.length ? `<p class="counts-sum">${hardest != null ? `Lo más difícil conseguido: <b>${esc(label(hardest))}</b>` : ''}${hardestTry != null && (hardest == null || hardestTry > hardest) ? `${hardest != null ? ' · ' : ''}Has llegado a intentar <b>${esc(label(hardestTry))}</b>` : ''}</p>` : ''}
   </div>`;
+}
+
+// Contadores con los colores del otro rocódromo (cada uno equivale a un color del Sharma).
+function otherCountsCard(d) {
+  const name = (d.gymName || '').trim();
+  const circ = gymCircuit(name);
+  if (!name) return `<div class="card counts"><p class="muted small">Escribe arriba el nombre del rocódromo para apuntar sus bloques por color.</p></div>`;
+  if (!circ) {
+    return `<div class="card circ-prompt">${icon('layers')}<div><b>¿Qué colores tiene ${esc(name)}?</b><small>Ordénalos de más fácil a más difícil una vez y se guardan para la próxima.</small></div>
+      <button class="btn primary sm" data-action="circ-open">Configurar</button></div>`;
+  }
+  const mine = d.climbs.filter((c) => c.discipline === 'boulder');
+  const cnt = (name2, sent) => mine.filter((c) => c.gymColor === name2 && M.isSent(c) === sent).length;
+  const ctr = (k, sent) => { const n = cnt(circ.colors[k].name, sent); return `<div class="ctr ${sent ? 'send' : 'proj'} ${n ? 'has' : ''}">
+      <button data-action="cnt" data-gc="${k}" data-r="${sent ? 'send' : 'project'}" data-d="-1" aria-label="Menos" ${n ? '' : 'disabled'}>${icon('minus')}</button><b>${n}</b>
+      <button data-action="cnt" data-gc="${k}" data-r="${sent ? 'send' : 'project'}" data-d="1" aria-label="Más">${icon('plus')}</button></div>`; };
+  const inv = d.climbs.filter((c) => c.discipline === 'invented' && c.invKind === 'boulder');
+  const c2 = (sent, n) => `<div class="ctr ${sent ? 'send' : 'proj'} ${n ? 'has' : ''}"><button data-action="cnt" data-g="inv" data-r="${sent ? 'send' : 'project'}" data-d="-1" aria-label="Menos" ${n ? '' : 'disabled'}>${icon('minus')}</button><b>${n}</b><button data-action="cnt" data-g="inv" data-r="${sent ? 'send' : 'project'}" data-d="1" aria-label="Más">${icon('plus')}</button></div>`;
+  return `<div class="card counts">
+    <div class="counts-head"><b>¿Qué has hecho?</b><span class="ch-k"><i class="k-send">${icon('check')}</i>Conseguidos</span><span class="ch-k"><i class="k-proj">${icon('refresh')}</i>Intentados</span></div>
+    ${circ.colors.map((g, k) => `<div class="crow ${cnt(g.name, true) + cnt(g.name, false) ? 'active' : ''}">
+      <span class="eqwrap"><span class="grade sm" style="${C.gradeStyle(g.color)}">${esc(g.name)}</span><small>≈ ${esc(M.gradeLabel({ discipline: 'boulder', grade: g.eq }, set()))}</small></span>${ctr(k, true)}${ctr(k, false)}</div>`).join('')}
+    <div class="crow inv-row ${inv.length ? 'active' : ''}"><span class="inv-label"><b>✏️ Inventado</b><small>libre del profe</small></span>${c2(true, inv.filter(M.isSent).length)}${c2(false, inv.filter((c) => !M.isSent(c)).length)}</div>
+    <button class="link circ-edit" data-action="circ-open">${icon('edit')} Cambiar colores de ${esc(circ.name)}</button>
+  </div>`;
+}
+
+// Hoja para configurar los colores de otro rocódromo.
+function openCircuitSheet(name) {
+  const c = state.circ;
+  const reg = sharmaRegular();
+  const used = new Set(c.colors.map((x) => x.name.toLowerCase()));
+  openSheet(`<div class="sheet">
+    <div class="grabber"></div>
+    <div class="sheet-head"><button class="link" data-action="close-sheet" type="button">Cancelar</button><b>Colores de ${esc(name)}</b><span></span></div>
+    <div class="sheet-body">
+      <p class="muted small">Del más fácil (arriba) al más difícil (abajo). Cada color se compara con uno del Sharma para tu progreso; cámbialo si no encaja.</p>
+      <div class="circ-list">${c.colors.length ? c.colors.map((g, k) => `<div class="circ-row">
+        <input type="color" value="${esc(toHex(g.color))}" data-circ-color="${k}" aria-label="Color">
+        <input value="${esc(g.name)}" data-circ-name="${k}" aria-label="Nombre" maxlength="20">
+        <label class="eq-sel">≈<select data-circ-eq="${k}" aria-label="Equivale a">${reg.map((r) => `<option value="${r.i}" ${g.eq === r.i ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select></label>
+        <div class="circ-btns"><button class="icon-btn" data-action="circ-move" data-i="${k}" data-d="-1" aria-label="Más fácil" ${k === 0 ? 'disabled' : ''}>↑</button>
+        <button class="icon-btn" data-action="circ-move" data-i="${k}" data-d="1" aria-label="Más difícil" ${k === c.colors.length - 1 ? 'disabled' : ''}>↓</button>
+        <button class="icon-btn" data-action="circ-del" data-i="${k}" aria-label="Quitar">${icon('close')}</button></div></div>`).join('') : '<p class="muted small center pad">Añade los colores que tiene este rocódromo 👇</p>'}</div>
+      <div class="field"><span>Añadir color</span><div class="chips">${COMMON_COLORS.filter(([n]) => !used.has(n.toLowerCase())).map(([n, col]) => `<button class="chip dotchip" data-action="circ-add" data-name="${n}" data-color="${col}"><i style="background:${col}"></i>${n}</button>`).join('')}
+        <button class="chip" data-action="circ-add" data-name="Nuevo" data-color="#64748b">＋ Otro</button></div></div>
+    </div>
+    <div class="sheet-foot"><button class="btn primary block" data-action="circ-save" ${c.colors.length ? '' : 'disabled'}>Guardar colores</button></div></div>`, 'circ-sheet');
+}
+
+// Recalcula la equivalencia automática si el usuario no la ha tocado.
+function autoEq() {
+  const cs = state.circ.colors;
+  cs.forEach((g, k) => { if (!g.eqManual) g.eq = defaultEq(k, cs.length); });
 }
 
 // Selector de bloques/vías de la sala para apuntar.
@@ -1279,6 +1344,7 @@ function viewSettings() {
       <h3>${icon('calendar')} Tus días de escalada</h3>
       ${scheduleFields(st.schedule || { days: [4], time: '19:00' }, (st.extraDates || []).filter((d) => d >= I.today()).sort())}
     </div>
+    ${Object.keys(set().otherGyms || {}).length ? `<div class="card"><h3>${icon('pin')} Otros rocódromos</h3>${Object.values(set().otherGyms).map((g) => `<div class="og-row"><b>${esc(g.name)}</b><span class="og-dots">${g.colors.map((c) => `<i style="background:${esc(c.color)}" title="${esc(c.name)}"></i>`).join('')}</span><button class="link" data-action="og-edit" data-v="${esc(g.name)}">Editar</button></div>`).join('')}</div>` : ''}
     <div class="card form">
       <label class="switch"><span><b>Bloques de la sala</b><small class="muted">Muestra los bloques y vías de ${esc(S.GYM.name)} (se actualizan solos cada día)</small></span><input type="checkbox" data-toggle="liveGym" ${st.liveGym !== false ? 'checked' : ''}><i></i></label>
     </div>
@@ -1604,6 +1670,46 @@ const actions = {
     if (d.where === 'other') d.climbs = d.climbs.filter((c) => !c.vlId);
     saveDraftSoon(); rerender();
   },
+  'og-edit'(el) {
+    const cur = gymCircuit(el.dataset.v); if (!cur) return;
+    state.circ = { name: cur.name, colors: structuredClone(cur.colors).map((x) => ({ ...x, origName: x.name })) };
+    openCircuitSheet(cur.name);
+  },
+  'circ-open'() {
+    const name = (state.draft?.gymName || '').trim(); if (!name) { toast('Escribe primero el nombre del rocódromo'); return; }
+    const cur = gymCircuit(name);
+    state.circ = { name, colors: cur ? structuredClone(cur.colors).map((x) => ({ ...x, origName: x.name })) : [] };
+    openCircuitSheet(name);
+  },
+  'circ-add'(el) {
+    const c = state.circ; let n = el.dataset.name;
+    if (n === 'Nuevo') { let k = 1; while (c.colors.some((x) => x.name === `Color ${k}`)) k++; n = `Color ${k}`; }
+    c.colors.push({ name: n, color: el.dataset.color, eq: 0 }); autoEq(); haptic(); openCircuitSheet(c.name);
+  },
+  'circ-move'(el) {
+    const c = state.circ; const i = Number(el.dataset.i); const j = i + Number(el.dataset.d);
+    if (j < 0 || j >= c.colors.length) return;
+    [c.colors[i], c.colors[j]] = [c.colors[j], c.colors[i]]; autoEq(); openCircuitSheet(c.name);
+  },
+  'circ-del'(el) { state.circ.colors.splice(Number(el.dataset.i), 1); autoEq(); openCircuitSheet(state.circ.name); },
+  async 'circ-save'() {
+    const c = state.circ;
+    const names = c.colors.map((x) => x.name.trim()).filter(Boolean);
+    if (new Set(names.map((x) => x.toLowerCase())).size !== names.length) { toast('Hay dos colores con el mismo nombre'); return; }
+    const old = gymCircuit(c.name);
+    const colors = c.colors.map((x) => ({ name: x.name.trim(), color: x.color, eq: Number(x.eq), eqManual: !!x.eqManual }));
+    state.settings.otherGyms = { ...(set().otherGyms || {}), [gymKey(c.name)]: { name: c.name, colors } };
+    await saveSettings();
+    // Recalcular sesiones antiguas y el borrador de este rocódromo.
+    const byName = Object.fromEntries(colors.map((x) => [x.name, x]));
+    const renamed = {}; c.colors.forEach((x) => { if (x.origName && x.origName !== x.name.trim()) renamed[x.origName] = x.name.trim(); });
+    void old;
+    const fix = (cl) => { if (!cl.gymColor) return false; const nm = renamed[cl.gymColor] || cl.gymColor; const col = byName[nm]; if (!col) return false; const ch = cl.grade !== col.eq || cl.gymColor !== nm || cl.gymColorHex !== col.color; cl.gymColor = nm; cl.grade = col.eq; cl.gymColorHex = col.color; return ch; };
+    const changed = state.sessions.filter((x) => x.where === 'other' && gymKey(x.gym) === gymKey(c.name) && (x.climbs || []).map(fix).some(Boolean));
+    if (changed.length) await db.putMany('sessions', changed);
+    if (state.draft) { state.draft.climbs.forEach(fix); saveDraftSoon(); }
+    closeSheet(); toast(`Colores de ${c.name} guardados`); rerender();
+  },
   'pick-gym'(el) { state.draft.gymName = el.dataset.v; saveDraftSoon(); rerender(); },
   'with-add'(el) { addWith(el.dataset.v); },
   'with-solo'() { const d = state.draft; d.solo = !d.solo; if (d.solo) d.with = []; saveDraftSoon(); rerender(); },
@@ -1617,6 +1723,14 @@ const actions = {
       else { const idx = d.climbs.map((c, k) => [c, k]).reverse().find(([c]) => c.discipline === 'invented' && c.invKind === disc && M.isSent(c) === sent)?.[1]; if (idx != null) d.climbs.splice(idx, 1); }
       haptic(6); saveDraftSoon(); rerender();
       $(`.ctr button[data-g="inv"][data-r="${r}"]`)?.parentElement.querySelector('b')?.classList.add('bump');
+      return;
+    }
+    if (el.dataset.gc != null) {
+      const circ = gymCircuit(d.gymName); const col = circ?.colors[Number(el.dataset.gc)]; if (!col) return;
+      if (Number(el.dataset.d) > 0) d.climbs.push({ id: uid(), discipline: 'boulder', grade: col.eq, gymColor: col.name, gymColorHex: col.color, result: r, attempts: sent ? 2 : 3, styles: [], holds: [], moves: [], name: '', zone: '', notes: '' });
+      else { const idx = d.climbs.map((c, k) => [c, k]).reverse().find(([c]) => c.gymColor === col.name && M.isSent(c) === sent)?.[1]; if (idx != null) d.climbs.splice(idx, 1); }
+      haptic(6); saveDraftSoon(); rerender();
+      $(`.ctr button[data-gc="${el.dataset.gc}"][data-r="${r}"]`)?.parentElement.querySelector('b')?.classList.add('bump');
       return;
     }
     const g = Number(el.dataset.g);
@@ -1787,6 +1901,10 @@ function onInput(e) {
       if (box) box.innerHTML = t.length ? `<small class="muted">Lo apunto como:</small> ${N.topicChips(t)}` : '';
     }
     saveDraftSoon(400);
+  } else if (el.dataset.circName != null && state.circ) {
+    state.circ.colors[Number(el.dataset.circName)].name = el.value;
+  } else if (el.dataset.circColor != null && state.circ) {
+    state.circ.colors[Number(el.dataset.circColor)].color = el.value;
   } else if (el.hasAttribute('data-gymname') && state.draft) {
     state.draft.gymName = el.value; saveDraftSoon(400);
   } else if (el.dataset.setting) {
@@ -1806,6 +1924,9 @@ async function onChange(e) {
     if (el.value) { state.draft.date = el.value; saveDraftSoon(); rerender(); }
     return;
   }
+  if (el.dataset.circEq != null && state.circ) {
+    const g = state.circ.colors[Number(el.dataset.circEq)]; g.eq = Number(el.value); g.eqManual = true; haptic(); return;
+  }
   if (el.hasAttribute('data-loose-date')) {
     if (el.value && el.value <= I.today()) { state.looseDate = el.value; openItemSheet(state.sheetItem, true); }
     return;
@@ -1815,6 +1936,7 @@ async function onChange(e) {
   }
   if (el.hasAttribute('data-sch-extra')) { await addExtraDate(el.value); return; }
   if (el.dataset.gymSelect) { state.ui[el.dataset.gymSelect] = el.value; rerender(); return; }
+  if (el.hasAttribute('data-gymname')) { rerender(); return; }
   if (el.dataset.toggle) {
     state.settings[el.dataset.toggle] = el.checked; await saveSettings();
     if (el.dataset.toggle === 'liveGym' && el.checked) loadGym();

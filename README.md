@@ -13,7 +13,7 @@ Funciona en el móvil, se puede instalar en la pantalla de inicio y funciona sin
 
 **Logros sin final:** constancia, conseguidos, a la primera, racha, colores, «Domina tu color», color completo… al completar un nivel se crea el siguiente automáticamente y la app avisa con «¡Nuevo logro!».
 
-**Otros rocódromos y bloques inventados:** en sesiones libres se puede elegir «Otro rocódromo» (se apuntan por color o grado, sin bloques concretos) y Progreso muestra los rocódromos visitados. En los contadores hay una fila «✏️ Inventado» para los bloques y vías libres del profe.
+**Otros rocódromos y bloques inventados:** en sesiones libres se puede elegir «Otro rocódromo»: sus colores se configuran una vez (ordenados de fácil a difícil) y cada uno equivale a un color del Sharma para el progreso; no hay bloques concretos y Progreso muestra los rocódromos visitados. En los contadores hay una fila «✏️ Inventado» para los bloques y vías libres del profe.
 
 **Bloques sueltos:** marcar un bloque desde la Sala lo guarda directamente (sin abrir una sesión): cuenta para nivel, colores y logros, pero no como sesión. Se ven en el Perfil, en «Apuntados por separado».
 
