@@ -1,5 +1,5 @@
 // Service worker: permite usar la app sin conexión (p. ej. en el rocódromo sin cobertura).
-const CACHE = 'escalada-v9';
+const CACHE = 'escalada-v10';
 const ASSETS = ['./', './index.html', './styles.css', './manifest.webmanifest', './icons/icon.svg', './icons/icon-192.png',
   './js/app.js', './js/db.js', './js/model.js', './js/insights.js', './js/charts.js', './js/demo.js', './js/sharma.js', './js/icons.js', './js/schedule.js', './js/notes.js', './js/shareimg.js',
   './data/sharma.json', './data/events.json'];
@@ -18,7 +18,8 @@ self.addEventListener('fetch', (e) => {
   const own = url.origin === location.origin;
   const fonts = /fonts\.(googleapis|gstatic)\.com$/.test(url.hostname);
   if (e.request.method !== 'GET' || (!own && !fonts)) return;
-  e.respondWith(fetch(e.request).then((res) => {
+  // «no-cache»: pregunta siempre al servidor si hay versión nueva (evita mezclar archivos viejos y nuevos).
+  e.respondWith(fetch(e.request, own ? { cache: 'no-cache' } : {}).then((res) => {
     if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(e.request, copy)); }
     return res;
   }).catch(() => caches.match(e.request, { ignoreSearch: true })

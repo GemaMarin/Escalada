@@ -7,7 +7,7 @@ Funciona en el móvil, se puede instalar en la pantalla de inicio y funciona sin
 
 **Registrar una sesión en segundos:** Clase o Libre (con quién fuiste), y contadores por color de *conseguidos* e *intentados* («3 amarillos, 1 morado intentado»). Si te acuerdas de cuál era, puedes elegir el bloque concreto de la sala. Las notas se clasifican solas (técnica, cabeza, molestias…), en Inicio sale tu próximo reto y cada sesión se puede compartir como imagen.
 
-**Navegación:** Inicio · Sala · ＋ · Eventos · Perfil (foto de perfil, sesiones, progreso y logros).
+**Navegación:** Inicio · Sala · ＋ · Eventos · Progreso. El perfil (foto, números, sesiones y ajustes) se abre tocando tu foto en Inicio.
 
 **Eventos:** eventos de Madrid publicados en la web del Sharma (se actualizan solos cada día), bloques y vías recién montados por sector, eventos apuntados a mano (p. ej. promociones vistas en Instagram) y enlace a su Instagram.
 
