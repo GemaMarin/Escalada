@@ -369,6 +369,7 @@ function viewHome() {
       <a href="#/perfil" aria-label="Tu perfil">${avatarHTML()}</a>
     </header>
     ${live}${plan ? planCardHTML(plan) : ''}
+    ${levelCard()}
     <section class="hero">
       <div class="hero-ring">${ring(weekSessions, goal)}<div class="hero-ring-v"><b>${weekSessions}</b><small>de ${goal}</small></div></div>
       <div class="hero-txt">
@@ -378,7 +379,6 @@ function viewHome() {
       </div>
     </section>
     ${!pending && !(plan?.today || plan?.pending) ? `<a class="btn primary block big" href="#/nueva" data-action="start-session">${icon('plus')} Registrar sesión</a>` : ''}
-    ${nextChallenge()}
     ${trying.length ? `<section><div class="section-head"><h2 class="section-title">Bloques que estás intentando</h2><a href="#/sala" data-action="gym-filter-trying">Ver todos</a></div>
       <p class="muted small sub">Bloques que has intentado y siguen montados. ¡A por ellos!</p>
       <div class="tiles-row">${trying.map((x) => itemTile(x, itemStatus(log.get(x.vlId)))).join('')}</div></section>` : ''}
@@ -391,28 +391,40 @@ function viewHome() {
 }
 
 // Siguiente color/grado a por el que ir, según lo conseguido.
-function nextChallenge() {
+// «Rojo» → «rojos», «Azul» → «azules».
+const colorPlural = (n) => { const w = n.toLowerCase(); return /[aeiou]$/.test(w) ? `${w}s` : `${w}es`; };
+
+// Tarjeta de nivel: tu color actual como medalla, progreso y siguiente color.
+function levelCard() {
   const climbs = I.allClimbs(state.sessions);
   const scale = M.boulderScale(set());
-  const out = [];
+  const regular = scale.map((g, i) => ({ ...g, i })).filter((g) => !g.joker);
   const bSent = climbs.filter((c) => c.discipline === 'boulder' && M.isSent(c)).map((c) => c.grade);
-  if (bSent.length || set().usualCircuit) {
-    const best = bSent.length ? Math.max(...bSent) : null;
-    let next = null;
-    if (best == null) next = M.boulderIndexByName(set(), set().usualCircuit);
-    else for (let i = best + 1; i < scale.length; i++) if (!scale[i].joker) { next = i; break; }
-    if (next != null && next >= 0) {
-      out.push(`<div class="nc"><span class="nc-k">Bloque</span>${gradeChip({ discipline: 'boulder', grade: next })}<small>${best != null ? `Ya tienes el ${esc(scale[best].name)}` : 'Tu color para empezar'}</small></div>`);
-    } else if (best != null) out.push(`<div class="nc"><span class="nc-k">Bloque</span>${gradeChip({ discipline: 'boulder', grade: best })}<small>¡Ya estás en el más difícil!</small></div>`);
-  }
+  const best = bSent.length ? Math.max(...bSent) : null;
+  const cur = best != null ? regular.filter((g) => g.i <= best).pop() : null;
+  const start = cur ? null : regular.find((g) => g.name === set().usualCircuit) || regular[0];
+  const next = cur ? regular.find((g) => g.i > cur.i) : start;
+  const level = cur || start;
+  if (!level) return '';
+  const atLevel = cur ? bSent.filter((g) => g === cur.i).length : 0;
+  const goal = atLevel < 3 ? 3 : atLevel < 5 ? 5 : atLevel < 10 ? 10 : 20;
+  const tried = next ? climbs.filter((c) => c.discipline === 'boulder' && !M.isSent(c) && c.grade === next.i).length : 0;
   const rSent = climbs.filter((c) => c.discipline === 'route' && M.isSent(c)).map((c) => c.grade);
-  if (rSent.length) {
-    const best = Math.max(...rSent);
-    const next = Math.min(best + 1, M.ROUTE_GRADES.length - 1);
-    out.push(`<div class="nc"><span class="nc-k">Vía</span>${gradeChip({ discipline: 'route', grade: next })}<small>Tu mejor: ${esc(M.ROUTE_GRADES[best])}</small></div>`);
-  }
-  if (!out.length) return '';
-  return `<section class="card next-card"><div class="nc-head">${icon('trophy')}<b>Tu próximo reto</b></div><div class="nc-row">${out.join('')}</div></section>`;
+  const bestR = rSent.length ? Math.max(...rSent) : null;
+  const fg = C.textOn(level.color.startsWith('#') ? level.color : '#888');
+  const levelNum = regular.findIndex((g) => g.i === level.i) + 1;
+  return `<a class="card level-card" href="#/progreso" data-action="prog-tab" data-v="resumen" style="--lc:${esc(level.color)};--lt:${fg}">
+    <div class="lc-medal"><span class="lc-ring"></span><b>${levelNum}</b><small>nivel</small></div>
+    <div class="lc-main">
+      <p class="lc-k">${cur ? 'Tu nivel' : 'Empiezas en'}</p>
+      <h3>${esc(level.name)}</h3>
+      ${cur ? `<div class="lc-bar"><i style="width:${Math.min(100, Math.round(atLevel / goal * 100))}%"></i></div>
+        <small>${atLevel} ${atLevel === 1 ? `bloque ${esc(level.name.toLowerCase())}` : `bloques ${esc(colorPlural(level.name))}`} · objetivo ${goal}</small>`
+        : '<small>Apunta tu primera sesión para empezar a subir</small>'}
+      ${next && cur ? `<div class="lc-next">Siguiente ${gradeChip({ discipline: 'boulder', grade: next.i }, 'xs')} ${tried ? `<span>· lo has intentado ${plural(tried, 'vez', 'veces')}</span>` : ''}</div>` : (cur && !next ? '<div class="lc-next">👑 ¡Estás en el color más difícil!</div>' : '')}
+      ${bestR != null ? `<div class="lc-next">En vías ${gradeChip({ discipline: 'route', grade: bestR }, 'xs')} <span>· siguiente ${esc(M.ROUTE_GRADES[Math.min(bestR + 1, M.ROUTE_GRADES.length - 1)])}</span></div>` : ''}
+    </div>
+  </a>`;
 }
 
 // Avisos a partir de las notas (p. ej. molestias repetidas).
@@ -551,7 +563,7 @@ function viewEvents() {
         const dots = Object.entries(byColor).sort((x, y) => (scale.findIndex((g) => g.name === x[0]) - scale.findIndex((g) => g.name === y[0])) || x[0].localeCompare(y[0]))
           .map(([g, n]) => `<i style="background:${itemGradeColor(b.list.find((x) => x.grade === g))}" title="${esc(g)}"></i>`.repeat(Math.min(n, 6))).join('');
         return `<button class="nb-card" data-action="news-sector" data-sector="${esc(b.sector)}" data-kind="${b.list[0].kind}" data-recent="${Date.now() - b.list[0].date < WEEK ? 1 : ''}">
-          <small>${esc(P.niceDate(b.date))}</small><b>${esc(b.sector)}</b>
+          <small>${esc(P.niceDate(b.date, false))}</small><b>${esc(b.sector)}</b>
           <span class="nb-n">${b.list.length}<em>${b.list[0].kind === 'route' ? (b.list.length === 1 ? 'vía nueva' : 'vías nuevas') : (b.list.length === 1 ? 'bloque nuevo' : 'bloques nuevos')}</em></span>
           <span class="nb-dots">${dots}</span>
         </button>`;

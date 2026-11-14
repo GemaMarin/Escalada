@@ -13,7 +13,7 @@ export const niceDate = (iso, article = true) => {
   if (diff === 1) return 'mañana';
   if (diff === -1) return 'ayer';
   const d = parseDate(iso);
-  return `${article ? 'el ' : ''}${DAY_NAMES[d.getDay()]} ${d.getDate()}`;
+  return `${article ? 'el ' : ''}${DAY_NAMES[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}`;
 };
 // «de hoy», «de ayer», «del jueves 12»
 export const sessionOf = (iso) => {
