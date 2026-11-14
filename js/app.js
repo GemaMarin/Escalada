@@ -1165,8 +1165,8 @@ function achievementsNow() {
 function progAchievements() {
   const ach = achievementsNow();
   const got = ach.reduce((a, x) => a + x.level, 0);
-  const total = ach.reduce((a, x) => a + x.max, 0);
-  return `<div class="card ach-head">${ring(got, total, 76)}<div><b>${got} de ${total} logros</b><small class="muted">Cada logro tiene niveles: al completar uno aparece el siguiente.</small></div></div>
+  const near = [...ach].filter((a) => !a.complete).sort((a, b) => b.progress - a.progress)[0];
+  return `<div class="card ach-head"><span class="ach-big">🏅</span><div><b>${got} ${got === 1 ? 'logro conseguido' : 'logros conseguidos'}</b><small class="muted">Al completar uno aparece el siguiente: siempre hay un objetivo nuevo.${near ? ` Lo más cerca: <b>${esc(near.goal)}</b>.` : ''}</small></div></div>
     <div class="ach-grid">${ach.map((a) => `<div class="ach ${a.level ? 'got' : ''} ${a.complete ? 'complete' : ''}">
       <div class="ach-top"><span class="ach-ic">${a.icon}</span>${a.level ? `<span class="ach-lv">Nivel ${a.level}</span>` : ''}</div>
       <b>${esc(a.title)}</b>
