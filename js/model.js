@@ -124,12 +124,17 @@ export function boulderScale(settings) {
   return settings.boulderScale?.length ? settings.boulderScale : DEFAULT_BOULDER_SCALE;
 }
 
+// Bloques/vías inventados por el profe en clase: sin color ni grado.
+export const INVENTED_COLOR = '#a8a29e';
+
 export function gradeLabel(climb, settings) {
+  if (climb.discipline === 'invented') return 'Inventado';
   if (climb.discipline === 'route') return ROUTE_GRADES[climb.grade] ?? '?';
   return boulderScale(settings)[climb.grade]?.name ?? '?';
 }
 
 export function gradeColor(climb, settings) {
+  if (climb.discipline === 'invented') return INVENTED_COLOR;
   if (climb.discipline === 'route') return gradeHue(climb.grade / (ROUTE_GRADES.length - 1));
   return boulderScale(settings)[climb.grade]?.color ?? '#999';
 }
@@ -138,6 +143,7 @@ export function routeColor(i) { return gradeHue(i / (ROUTE_GRADES.length - 1)); 
 
 // Dificultad relativa 0–1 dentro de su escala, para comparar bloque y vía.
 export function intensity(climb, settings) {
+  if (climb.discipline === 'invented') return 0.5;
   const n = climb.discipline === 'route' ? ROUTE_GRADES.length : boulderScale(settings).length;
   return n > 1 ? climb.grade / (n - 1) : 0.5;
 }

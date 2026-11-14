@@ -284,6 +284,8 @@ function photoURL(id) {
 const sessionPhotos = (sid) => [...state.photos.values()].filter((p) => p.sessionId === sid).sort((a, b) => a.createdAt - b.createdAt);
 const TYPE_LABEL = { boulder: 'Bloque', route: 'Vías', mixed: 'Bloque y vías', training: 'Entreno' };
 const titleOf = (s) => `${s.kind === 'free' ? 'Sesión libre' : s.kind === 'class' ? 'Clase' : 'Sesión'} · ${(TYPE_LABEL[s.type] || 'escalada').toLowerCase()}`;
+const gymOf = (s) => (s.where === 'other' && s.gym ? s.gym : S.GYM.name);
+const otherGyms = () => [...new Set(state.sessions.filter((x) => x.where === 'other' && x.gym).map((x) => x.gym))];
 const fmtMin = (m) => (m >= 60 ? `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60}` : ''}` : `${m} min`);
 const ago = (ts) => {
   const d = Math.floor((Date.now() - ts) / 86400000);
@@ -307,7 +309,7 @@ function sessionCard(s) {
     <div class="sc-date"><b>${I.parseDate(s.date).getDate()}</b><span>${I.fmtDate(s.date, { month: 'short' }).replace('.', '')}</span></div>
     <div class="sc-main">
       <div class="sc-title">${esc(titleOf(s))}${s.mood != null ? ` <span class="mood-i">${M.MOODS[s.mood]}</span>` : ''}</div>
-      <div class="sc-meta">${climbs.length ? `${plural(sent, 'conseguido', 'conseguidos')}${tried ? ` · ${tried} intentado${tried > 1 ? 's' : ''}` : ''}` : 'Sin bloques apuntados'}${(s.with || []).length ? ` · con ${esc(s.with.join(', '))}` : s.solo ? ' · sola' : ''}</div>
+      <div class="sc-meta">${climbs.length ? `${plural(sent, 'conseguido', 'conseguidos')}${tried ? ` · ${tried} intentado${tried > 1 ? 's' : ''}` : ''}` : 'Sin bloques apuntados'}${(s.with || []).length ? ` · con ${esc(s.with.join(', '))}` : s.solo ? ' · sola' : ''}${s.where === 'other' ? ` · 📍 ${esc(s.gym)}` : ''}</div>
       ${top.length ? `<div class="sc-grades">${top.map((c) => `<span class="dot${M.isSent(c) ? '' : ' open'}" style="--g:${M.gradeColor(c, set())}"></span>`).join('')}</div>` : ''}
     </div>
     ${photos[0] ? `<img class="sc-thumb" src="${photoURL(photos[0].id)}" alt="">` : `<span class="sc-go">${icon('chevron')}</span>`}
@@ -721,7 +723,7 @@ function viewDetail(id) {
       <a class="btn sm" href="#/editar/${s.id}">${icon('edit')} Editar</a></div>
     <p class="eyebrow">${esc(date)}</p>
     <h1 class="page-title">${esc(titleOf(s))}${s.mood != null ? ` ${M.MOODS[s.mood]}` : ''}</h1>
-    ${(s.with || []).length ? `<p class="with-line">👯 Con ${esc(s.with.join(', '))}</p>` : s.solo ? '<p class="with-line">🙋‍♀️ Sola</p>' : ''}
+    <p class="with-line">📍 ${esc(gymOf(s))}${(s.with || []).length ? ` · 👯 Con ${esc(s.with.join(', '))}` : s.solo ? ' · 🙋‍♀️ Sola' : ''}</p>
     <section class="kpis three">
       ${kpi(sent.length, 'conseguidos')}
       ${kpi(flashes, 'a la primera')}
@@ -755,12 +757,12 @@ async function shareSessionImage(id, opts = {}) {
   const sent = climbs.filter(M.isSent);
   const best = [...sent].sort((a, b) => (a.discipline === b.discipline ? b.grade - a.grade : a.discipline === disc ? -1 : 1))[0];
   const blob = await sessionImage({
-    name: set().name, title: titleOf(s).replace(' · ', ' de '), gym: set().gym,
+    name: set().name, title: titleOf(s).replace(' · ', ' de '), gym: gymOf(s),
     date: I.parseDate(s.date).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' }),
     with: (s.with || []).join(', '), solo: !!s.solo && !(s.with || []).length, mood: s.mood != null ? M.MOODS[s.mood] : '',
     sent: sent.length, flash: climbs.filter((c) => statusOf(c.result) === 'flash').length, tried: climbs.length - sent.length,
     rowsTitle: disc === 'route' ? 'Vías por grado' : 'Bloques por color',
-    rows: Object.values(by).sort((a, b) => b.g - a.g),
+    rows: [...Object.values(by).sort((a, b) => b.g - a.g), ...(() => { const inv = climbs.filter((c) => c.discipline === 'invented'); return inv.length ? [{ label: 'Inventado', color: M.INVENTED_COLOR, sent: inv.filter(M.isSent).length, tried: inv.filter((c) => !M.isSent(c)).length }] : []; })()],
     hardest: best ? { label: M.gradeLabel(best, set()), color: toHex(M.gradeColor(best, set())) } : null,
   });
   showShareSheet(blob, `escalada-${s.date}.png`, opts.afterSave ? '¡Sesión guardada! 💪' : 'Tu sesión', opts.afterSave ? '¿Quieres compartir el resumen o guardarlo en tu móvil?' : '');
@@ -826,7 +828,7 @@ function climbRow(c) {
 // ---------------- Registrar sesión ----------------
 function newDraft() {
   const t = I.today();
-  return { id: uid(), isNew: true, date: t, kind: P.isPlannedDay(t, set()) ? 'class' : 'free', with: [], type: 'boulder', duration: 90, rpe: null, mood: null, notes: '', climbs: [], newPhotos: [], removedPhotos: [] };
+  return { id: uid(), isNew: true, date: t, kind: P.isPlannedDay(t, set()) ? 'class' : 'free', with: [], type: 'boulder', duration: 90, rpe: null, mood: null, notes: '', climbs: [], newPhotos: [], removedPhotos: [], where: 'sharma', gymName: '' };
 }
 
 function ensureDraft() {
@@ -845,7 +847,7 @@ function viewEditor(editId) {
     const s = state.sessions.find((x) => x.id === editId);
     if (!s) return emptyState('Sesión no encontrada', '');
     if (state.draft?.isNew) state.stash = state.draft;
-    state.draft = { with: [], ...structuredClone(s), isNew: false, newPhotos: [], removedPhotos: [] };
+    state.draft = { with: [], ...structuredClone(s), isNew: false, newPhotos: [], removedPhotos: [], gymName: s.where === 'other' ? s.gym : '' };
     state.ui.logDisc = s.type === 'route' ? 'route' : 'boulder';
   }
   if (!editId && !state.draft?.isNew) { state.draft = state.stash || newDraft(); state.stash = null; saveDraftSoon(); }
@@ -870,14 +872,19 @@ function viewEditor(editId) {
       <div class="chips"><button class="chip ${d.solo ? 'on' : ''}" data-action="with-solo">🙋‍♀️ Sola</button>${d.with.map((f) => `<button class="chip on" data-action="with-del" data-v="${esc(f)}">${esc(f)} ${icon('close')}</button>`).join('')}
         ${friends.map((f) => `<button class="chip" data-action="with-add" data-v="${esc(f)}">＋ ${esc(f)}</button>`).join('')}</div>
       <div class="with-input"><input data-with placeholder="Escribe un nombre" enterkeyhint="done"><button class="btn sm" data-action="with-add-input">Añadir</button></div></div>` : ''}
+    ${d.kind === 'free' ? `<div class="card where-card"><b>¿Dónde has escalado?</b>
+      ${seg('set-where', d.where === 'other' ? 'other' : 'sharma', { sharma: `${icon('pin')} ${esc(S.GYM.name.replace('Sharma Climbing', 'Sharma'))}`, other: 'Otro rocódromo' })}
+      ${d.where === 'other' ? `<input data-gymname value="${esc(d.gymName || '')}" placeholder="Nombre del rocódromo" maxlength="60" autocomplete="off">
+        ${otherGyms().length ? `<div class="chips">${otherGyms().map((g) => `<button class="chip ${d.gymName === g ? 'on' : ''}" data-action="pick-gym" data-v="${esc(g)}">📍 ${esc(g)}</button>`).join('')}</div>` : ''}
+        <small class="muted">Para los bloques, elige el color del Sharma que más se parezca en dificultad.</small>` : ''}</div>` : ''}
 
     ${seg('log-disc', disc, { boulder: `${icon('boulder')} Bloques`, route: `${icon('rope')} Vías` })}
     ${countsCard(disc)}
 
-    <details class="card picker-box" ${state.ui.logOpen || specific ? 'open' : ''}>
+    ${d.kind === 'free' && d.where === 'other' ? '' : `<details class="card picker-box" ${state.ui.logOpen || specific ? 'open' : ''}>
       <summary data-action="log-open">${icon('wall')}<span><b>Elegir ${disc === 'route' ? 'vías concretas' : 'bloques concretos'}</b><small>${specific ? `${plural(specific, 'elegido', 'elegidos')} de la sala` : 'Opcional · si te acuerdas de cuál era'}</small></span>${icon('chevron', 'chev')}</summary>
       ${state.ui.logOpen || specific ? logPicker(disc) : ''}
-    </details>
+    </details>`}
 
     <div class="card form">
       <div class="field"><span>¿Cómo te has sentido?</span><div class="moods">${M.MOODS.map((m, i) => `<button class="mood ${d.mood === i ? 'on' : ''}" data-action="set-mood" data-v="${i}">${m}</button>`).join('')}</div></div>
@@ -928,6 +935,9 @@ function countsCard(disc) {
     ${grades.map((g) => `<div class="crow ${cnt(g.i, true) + cnt(g.i, false) ? 'active' : ''}">
       <span class="grade sm${g.joker ? ' joker' : ''}" style="${C.gradeStyle(g.color)}">${esc(g.label)}</span>${ctr(g, true)}${ctr(g, false)}</div>`).join('')}
     ${addRoute}
+    ${(() => { const inv = d.climbs.filter((c) => c.discipline === 'invented' && c.invKind === disc); const n1 = inv.filter(M.isSent).length; const n2 = inv.length - n1;
+      const c2 = (sent, n) => `<div class="ctr ${sent ? 'send' : 'proj'} ${n ? 'has' : ''}"><button data-action="cnt" data-g="inv" data-r="${sent ? 'send' : 'project'}" data-d="-1" aria-label="Menos" ${n ? '' : 'disabled'}>${icon('minus')}</button><b>${n}</b><button data-action="cnt" data-g="inv" data-r="${sent ? 'send' : 'project'}" data-d="1" aria-label="Más">${icon('plus')}</button></div>`;
+      return `<div class="crow inv-row ${inv.length ? 'active' : ''}"><span class="inv-label"><b>✏️ Inventado</b><small>libre del profe</small></span>${c2(true, n1)}${c2(false, n2)}</div>`; })()}
     ${mine.length ? `<p class="counts-sum">${hardest != null ? `Lo más difícil conseguido: <b>${esc(label(hardest))}</b>` : ''}${hardestTry != null && (hardest == null || hardestTry > hardest) ? `${hardest != null ? ' · ' : ''}Has llegado a intentar <b>${esc(label(hardestTry))}</b>` : ''}</p>` : ''}
   </div>`;
 }
@@ -1201,8 +1211,18 @@ function progSummary() {
     <div class="card"><h3>Tu nivel cada semana</h3>${C.weeklyBars(weeks, label, color, best?.grade ?? 0)}</div>
     ${used.length ? `<div class="card"><h3>Por ${disc === 'route' ? 'grado' : 'color'}</h3>${C.colorBars(used)}</div>` : ''}
     <div class="card"><h3>Días que has escalado</h3><div class="scroll-x">${C.calendarHeatmap(realSessions())}</div></div>
+    ${gymsCard()}
     ${topicsCard()}
     ${trying.length ? `<div class="card"><h3>${icon('refresh')} Estás intentando</h3><p class="muted small">Siguen montados en la sala: ¡la próxima vez saldrán!</p><div class="tile-grid">${trying.map((x) => itemTile(x, itemStatus(log.get(x.vlId)))).join('')}</div></div>` : ''}`;
+}
+
+// Rocódromos donde has escalado (solo si hay más de uno).
+function gymsCard() {
+  const counts = {};
+  realSessions().forEach((x) => { const g = gymOf(x); const c = (counts[g] ||= { n: 0, last: x.date }); c.n++; if (x.date > c.last) c.last = x.date; });
+  const list = Object.entries(counts).sort((a, b) => b[1].n - a[1].n);
+  if (list.length < 2) return '';
+  return `<div class="card"><h3>${icon('pin')} Rocódromos</h3>${list.map(([g, c]) => `<div class="gym-row"><b>${esc(g)}</b><small class="muted">${plural(c.n, 'sesión', 'sesiones')} · última ${esc(P.niceDate(c.last, false))}</small></div>`).join('')}</div>`;
 }
 
 function topicsCard() {
@@ -1326,7 +1346,11 @@ async function saveSession() {
   }
   const { isNew, newPhotos, removedPhotos, startedAt, ...session } = d;
   if (!session.duration) session.duration = 90;
-  const discs = new Set(session.climbs.map((c) => c.discipline));
+  if (session.kind === 'free' && session.where === 'other' && !(session.gymName || '').trim()) { toast('Escribe el nombre del rocódromo'); return; }
+  if (session.kind !== 'free') session.where = 'sharma';
+  session.gym = session.where === 'other' ? session.gymName.trim().replace(/\s+/g, ' ') : S.GYM.name;
+  delete session.gymName;
+  const discs = new Set(session.climbs.map((c) => (c.discipline === 'invented' ? c.invKind : c.discipline)));
   session.type = discs.size > 1 ? 'mixed' : discs.has('route') ? 'route' : discs.has('boulder') ? 'boulder' : (state.ui.logDisc || 'boulder');
   if (!session.rpe) session.rpe = 6;
   session.topics = N.topicsOf(session.notes);
@@ -1573,14 +1597,29 @@ const actions = {
     go(back);
   },
 
-  'set-kind'(el) { state.draft.kind = el.dataset.v; saveDraftSoon(); rerender(); },
+  'set-kind'(el) { state.draft.kind = el.dataset.v; if (el.dataset.v === 'class') state.draft.where = 'sharma'; saveDraftSoon(); rerender(); },
+  'set-where'(el) {
+    const d = state.draft; d.where = el.dataset.v;
+    if (d.where === 'other' && d.climbs.some((c) => c.vlId)) toast('Los bloques concretos del Sharma se quitan al cambiar de rocódromo');
+    if (d.where === 'other') d.climbs = d.climbs.filter((c) => !c.vlId);
+    saveDraftSoon(); rerender();
+  },
+  'pick-gym'(el) { state.draft.gymName = el.dataset.v; saveDraftSoon(); rerender(); },
   'with-add'(el) { addWith(el.dataset.v); },
   'with-solo'() { const d = state.draft; d.solo = !d.solo; if (d.solo) d.with = []; saveDraftSoon(); rerender(); },
   'with-add-input'() { const inp = $('[data-with]'); addWith(inp?.value); },
   'with-del'(el) { state.draft.with = state.draft.with.filter((f) => f !== el.dataset.v); saveDraftSoon(); rerender(); },
   cnt(el) {
-    const d = state.draft; const g = Number(el.dataset.g); const r = el.dataset.r; const disc = state.ui.logDisc;
+    const d = state.draft; const r = el.dataset.r; const disc = state.ui.logDisc;
     const sent = r === 'send';
+    if (el.dataset.g === 'inv') {
+      if (Number(el.dataset.d) > 0) d.climbs.push({ id: uid(), discipline: 'invented', invKind: disc, grade: 0, result: r, attempts: sent ? 2 : 3, styles: [], holds: [], moves: [], name: '', zone: '', notes: '' });
+      else { const idx = d.climbs.map((c, k) => [c, k]).reverse().find(([c]) => c.discipline === 'invented' && c.invKind === disc && M.isSent(c) === sent)?.[1]; if (idx != null) d.climbs.splice(idx, 1); }
+      haptic(6); saveDraftSoon(); rerender();
+      $(`.ctr button[data-g="inv"][data-r="${r}"]`)?.parentElement.querySelector('b')?.classList.add('bump');
+      return;
+    }
+    const g = Number(el.dataset.g);
     if (Number(el.dataset.d) > 0) {
       d.climbs.push({ id: uid(), discipline: disc, grade: g, result: r, attempts: sent ? 2 : 3, styles: [], holds: [], moves: [], name: '', zone: '', notes: '' });
       haptic(6);
@@ -1748,6 +1787,8 @@ function onInput(e) {
       if (box) box.innerHTML = t.length ? `<small class="muted">Lo apunto como:</small> ${N.topicChips(t)}` : '';
     }
     saveDraftSoon(400);
+  } else if (el.hasAttribute('data-gymname') && state.draft) {
+    state.draft.gymName = el.value; saveDraftSoon(400);
   } else if (el.dataset.setting) {
     state.settings[el.dataset.setting] = el.value;
     clearTimeout(settingsTimer); settingsTimer = setTimeout(saveSettings, 400);

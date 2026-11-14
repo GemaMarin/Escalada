@@ -13,6 +13,8 @@ Funciona en el móvil, se puede instalar en la pantalla de inicio y funciona sin
 
 **Logros sin final:** constancia, conseguidos, a la primera, racha, colores, «Domina tu color», color completo… al completar un nivel se crea el siguiente automáticamente y la app avisa con «¡Nuevo logro!».
 
+**Otros rocódromos y bloques inventados:** en sesiones libres se puede elegir «Otro rocódromo» (se apuntan por color o grado, sin bloques concretos) y Progreso muestra los rocódromos visitados. En los contadores hay una fila «✏️ Inventado» para los bloques y vías libres del profe.
+
 **Bloques sueltos:** marcar un bloque desde la Sala lo guarda directamente (sin abrir una sesión): cuenta para nivel, colores y logros, pero no como sesión. Se ven en el Perfil, en «Apuntados por separado».
 
 **Bloques concretos de la sala:** eliges Bloque o Vías, salen los bloques montados ahora en la sala (por color y sector) y para cada uno marcas *A la primera*, *Lo conseguí* o *Lo intenté*. Si no sabes cuál era, lo apuntas solo con el color. Cada bloque de la sala queda como **Conseguido**, **Intentando** o **Sin probar**, y en Inicio aparecen **Tus retos** (los que intentaste y siguen montados). Objetivo por defecto: 1 sesión a la semana.
