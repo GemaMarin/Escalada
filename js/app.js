@@ -700,10 +700,10 @@ function monthCalendar() {
   const days = new Date(y, m, 0).getDate();
   const offset = (first.getDay() + 6) % 7;
   const byDay = {};
-  state.sessions.forEach((x) => {
+  realSessions().forEach((x) => {
     if (!x.date.startsWith(ym)) return;
-    const b = (byDay[x.date] ||= { cls: 0, free: 0, loose: 0 });
-    if (x.loose) { if ((x.climbs || []).length) b.loose++; } else if (x.kind === 'free') b.free++; else b.cls++;
+    const b = (byDay[x.date] ||= { cls: 0, free: 0 });
+    if (x.kind === 'free') b.free++; else b.cls++;
   });
   const tot = Object.values(byDay).reduce((a, b) => ({ cls: a.cls + b.cls, free: a.free + b.free }), { cls: 0, free: 0 });
   const t = I.today();
@@ -713,7 +713,7 @@ function monthCalendar() {
     const iso = `${ym}-${String(dd).padStart(2, '0')}`;
     const b = byDay[iso];
     const kind = b ? (b.cls && b.free ? 'both' : b.cls ? 'cls' : b.free ? 'free' : '') : '';
-    const cls = ['cd', kind, b?.loose ? 'loose' : '', iso === t ? 'today' : '', iso > t ? 'future' : ''].filter(Boolean).join(' ');
+    const cls = ['cd', kind, iso === t ? 'today' : '', iso > t ? 'future' : ''].filter(Boolean).join(' ');
     cells.push(b ? `<button class="${cls}" data-action="cal-day" data-v="${iso}" aria-label="${dd}">${dd}</button>` : `<span class="${cls}">${dd}</span>`);
   }
   const label = cap(first.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }));
@@ -722,7 +722,7 @@ function monthCalendar() {
       <b>${esc(label)}</b>
       <button class="icon-btn ghost" data-action="cal-nav" data-d="1" aria-label="Mes siguiente" ${ym >= cur ? 'disabled' : ''}>${icon('chevron')}</button></div>
     <div class="cal-grid">${['L', 'M', 'X', 'J', 'V', 'S', 'D'].map((w) => `<span class="cw">${w}</span>`).join('')}${cells.join('')}</div>
-    <div class="cal-foot"><span><i class="k cls"></i>Clase${tot.cls ? ` · ${tot.cls}` : ''}</span><span><i class="k free"></i>Libre${tot.free ? ` · ${tot.free}` : ''}</span><span><i class="k dot"></i>Bloques sueltos</span></div>
+    <div class="cal-foot"><span><i class="k cls"></i>Clase${tot.cls ? ` · ${tot.cls}` : ''}</span><span><i class="k free"></i>Libre${tot.free ? ` · ${tot.free}` : ''}</span></div>
   </div>`;
 }
 
@@ -1786,14 +1786,13 @@ const actions = {
   'cal-day'(el) {
     const iso = el.dataset.v;
     const ss = realSessions().filter((x) => x.date === iso);
-    const loose = state.sessions.find((x) => x.loose && x.date === iso && (x.climbs || []).length);
-    if (ss.length === 1 && !loose) { go(`#/sesion/${ss[0].id}`); return; }
+    if (!ss.length) return;
+    if (ss.length === 1) { go(`#/sesion/${ss[0].id}`); return; }
     openSheet(`<div class="sheet">
       <div class="grabber"></div>
       <div class="sheet-head"><span></span><b>${esc(cap(I.parseDate(iso).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })))}</b><button class="link" data-action="close-sheet" type="button">Cerrar</button></div>
       <div class="sheet-body">
-        ${ss.length ? `<div class="list">${ss.map(sessionCard).join('')}</div>` : ''}
-        ${loose ? `<b>Bloques apuntados por separado</b><div class="list">${loose.climbs.map(climbRow).join('')}</div>` : ''}
+        <div class="list">${ss.map(sessionCard).join('')}</div>
       </div></div>`);
   },
   'past-session'() {
