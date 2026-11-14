@@ -7,7 +7,7 @@ import { icon } from './icons.js';
 import { makeDemo } from './demo.js';
 import * as P from './schedule.js';
 import * as N from './notes.js';
-import { tipOfDay } from './tips.js';
+import { sessionImage } from './shareimg.js';
 
 const DATA_VERSION = 4;
 const DEFAULT_SETTINGS = {
@@ -88,7 +88,16 @@ async function init() {
   render();
   document.body.classList.add('ready');
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  protectStorage();
   if (set().liveGym !== false) loadGym();
+}
+
+// Pide al navegador que no borre nunca los datos guardados (sesiones y fotos).
+async function protectStorage() {
+  try {
+    if (navigator.storage?.persisted && !(await navigator.storage.persisted())) await navigator.storage.persist();
+    state.persisted = await navigator.storage?.persisted?.();
+  } catch { /* sin soporte */ }
 }
 
 function applyTheme() {
@@ -115,7 +124,7 @@ const routes = [
   [/^#\/editar\/([\w-]+)$/, viewEditor, 'nueva'],
   [/^#\/sala$/, viewGym, 'sala'],
   [/^#\/progreso$/, viewProgress, 'progreso'],
-  [/^#\/cuerpo$/, () => { state.ui.progTab = 'cuerpo'; return viewProgress(); }, 'progreso'],
+  [/^#\/cuerpo$/, viewProgress, 'progreso'],
   [/^#\/ajustes$/, viewSettings, 'ajustes'],
 ];
 const route = () => document.body.dataset.route;
@@ -126,7 +135,10 @@ function render({ transition = false } = {}) {
     const m = hash.match(re);
     if (!m) continue;
     const swap = () => {
-      $('#view').innerHTML = fn(m[1]);
+      const view = $('#view');
+      view.innerHTML = fn(m[1]);
+      view.classList.toggle('enter', !render.keepScroll);
+      if (!render.keepScroll) [...view.children].forEach((c, i) => c.style.setProperty('--i', Math.min(i, 10)));
       document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.tab === tab));
       document.body.dataset.route = tab;
       if (!render.keepScroll) window.scrollTo(0, 0);
@@ -269,7 +281,7 @@ function ring(value, goal, size = 92) {
   const r = (size - 10) / 2; const c = 2 * Math.PI * r; const p = Math.min(1, goal ? value / goal : 0);
   return `<svg class="ring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true">
     <circle cx="${size / 2}" cy="${size / 2}" r="${r}" class="ring-bg"/>
-    <circle cx="${size / 2}" cy="${size / 2}" r="${r}" class="ring-fg" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - p)}" transform="rotate(-90 ${size / 2} ${size / 2})"/>
+    <circle cx="${size / 2}" cy="${size / 2}" r="${r}" class="ring-fg" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - p)}" style="--len:${c}" transform="rotate(-90 ${size / 2} ${size / 2})"/>
   </svg>`;
 }
 
@@ -325,9 +337,9 @@ function viewHome() {
       <p class="muted small sub">Bloques que has intentado y siguen montados. ¡A por ellos!</p>
       <div class="tiles-row">${trying.map((x) => itemTile(x, itemStatus(log.get(x.vlId)))).join('')}</div></section>` : ''}
     ${last ? `<section><div class="section-head"><h2 class="section-title">Tu última sesión</h2><a href="#/diario">Diario</a></div>${sessionCard(last)}</section>` : ''}
-    ${tipCard()}
     ${insights.length ? `<section><h2 class="section-title">Para ti</h2><div class="insights">${[...noteInsights(), ...insights].slice(0, 2).map(insightCard).join('')}</div></section>` : ''}
     ${gymTeaser()}
+    ${backupCard()}
     ${installCard()}
     ${!s.length ? `<div class="card soft center"><p>¿Quieres ver cómo queda con datos? Puedes cargar datos de ejemplo y borrarlos después en Ajustes.</p><button class="btn ghost" data-action="demo">Ver con datos de ejemplo</button></div>` : ''}`;
 }
@@ -355,11 +367,6 @@ function nextChallenge() {
   }
   if (!out.length) return '';
   return `<section class="card next-card"><div class="nc-head">${icon('trophy')}<b>Tu próximo reto</b></div><div class="nc-row">${out.join('')}</div></section>`;
-}
-
-function tipCard() {
-  const t = tipOfDay(state.ui.tip);
-  return `<section class="card tip"><div class="tip-head"><span class="tip-cat">💡 ${esc(t.cat)}</span><button class="link" data-action="next-tip">Otro consejo ${icon('refresh')}</button></div><p>${esc(t.text)}</p></section>`;
 }
 
 // Avisos a partir de las notas (p. ej. molestias repetidas).
@@ -425,14 +432,22 @@ function gymTeaser() {
   </a>`;
 }
 
+function backupCard() {
+  const n = state.sessions.filter((x) => !x.demo).length;
+  const last = set().lastBackup || 0;
+  if (n < 4 || Date.now() - last < 30 * 86400000) return '';
+  return `<div class="card install backup">${icon('download')}<div><b>Guarda una copia de tus sesiones</b><small>${last ? 'Hace más de un mes de tu última copia.' : 'Por si cambias de móvil o algo falla.'}</small></div>
+    <button class="btn sm primary" data-action="export">Guardar</button></div>`;
+}
+
 function installCard() {
   if (isStandalone() || set().installDismissed) return '';
   if (state.installEvt) {
-    return `<div class="card install">${icon('install')}<div><b>Instala la app</b><small>Acceso directo, pantalla completa y funciona sin cobertura.</small></div>
+    return `<div class="card install">${icon('install')}<div><b>Instala la app</b><small>Se abre como una app, funciona sin cobertura y tus sesiones quedan guardadas.</small></div>
       <button class="btn sm primary" data-action="install">Instalar</button><button class="x-btn" data-action="install-dismiss" aria-label="Cerrar">${icon('close')}</button></div>`;
   }
   if (isIOS()) {
-    return `<div class="card install">${icon('install')}<div><b>Añádela a tu pantalla de inicio</b><small>En Safari pulsa ${icon('share', 'inline')} Compartir → «Añadir a pantalla de inicio».</small></div>
+    return `<div class="card install">${icon('install')}<div><b>Instálala en tu pantalla de inicio</b><small>Así se abre como una app y tus sesiones quedan guardadas. En Safari: ${icon('share', 'inline')} Compartir → «Añadir a pantalla de inicio».</small></div>
       <button class="x-btn" data-action="install-dismiss" aria-label="Cerrar">${icon('close')}</button></div>`;
   }
   return '';
@@ -505,7 +520,7 @@ function viewDetail(id) {
   climbs.forEach((c) => { const k = `${c.discipline}|${c.grade}`; const r = (byGrade[k] ||= { c, sent: 0, tried: 0 }); if (M.isSent(c)) r.sent++; else r.tried++; });
   const rows = Object.values(byGrade).sort((a, b) => a.c.discipline.localeCompare(b.c.discipline) || b.c.grade - a.c.grade);
   return `<div class="topline"><a href="#/diario" class="back">${icon('back')} Diario</a>
-      <div class="row-gap"><button class="icon-btn" data-action="share" data-id="${s.id}" aria-label="Compartir">${icon('share')}</button><a class="icon-btn" href="#/editar/${s.id}" aria-label="Editar">${icon('edit')}</a></div></div>
+      <a class="btn sm" href="#/editar/${s.id}">${icon('edit')} Editar</a></div>
     <p class="eyebrow">${esc(date)}</p>
     <h1 class="page-title">${esc(titleOf(s))}${s.mood != null ? ` ${M.MOODS[s.mood]}` : ''}</h1>
     ${(s.with || []).length ? `<p class="with-line">👯 Con ${esc(s.with.join(', '))}</p>` : ''}
@@ -514,12 +529,53 @@ function viewDetail(id) {
       ${kpi(flashes, 'a la primera')}
       ${kpi(climbs.length - sent.length, 'intentados')}
     </section>
+    <button class="btn share-btn block" data-action="share-img" data-id="${s.id}">${icon('camera')} Crear imagen para compartir</button>
     ${rows.length ? `<div class="card"><h3>Por ${rows.some((r) => r.c.discipline === 'route') && !rows.some((r) => r.c.discipline === 'boulder') ? 'grado' : 'color'}</h3>
       ${rows.map((r) => `<div class="drow">${gradeChip(r.c, 'sm')}<span class="st-text-send">${r.sent ? `${icon('check', 'inline')} ${r.sent}` : ''}</span><span class="st-text-proj">${r.tried ? `${icon('refresh', 'inline')} ${r.tried}` : ''}</span></div>`).join('')}</div>` : ''}
     ${s.notes ? `<div class="card notes">${esc(s.notes).replace(/\n/g, '<br>')}${topics.length ? `<div class="note-topics">${N.topicChips(topics)}</div>` : ''}</div>` : ''}
     ${specific.length ? `<h2 class="section-title">Bloques de la sala</h2><div class="list">${specific.map(climbRow).join('')}</div>` : ''}
     ${photos.length ? `<h2 class="section-title">Fotos</h2><div class="gallery">${photos.map((p) => `<button class="thumb" data-action="photo" data-id="${p.id}"><img src="${photoURL(p.id)}" alt=""></button>`).join('')}</div>` : ''}
     <button class="btn danger ghost block" data-action="delete-session" data-id="${s.id}">${icon('trash')} Eliminar sesión</button>`;
+}
+
+// Doble toque para acciones que borran: el primer toque pide confirmación.
+function armed(el, text) {
+  if (el.classList.contains('confirm')) { clearTimeout(el._t); return true; }
+  const orig = el.innerHTML;
+  el.classList.add('confirm'); el.innerHTML = `${icon('trash')} ${text}`; haptic(20);
+  el._t = setTimeout(() => { if (el.isConnected) { el.classList.remove('confirm'); el.innerHTML = orig; } }, 4000);
+  return false;
+}
+
+async function shareSessionImage(id) {
+  const s = state.sessions.find((x) => x.id === id); if (!s) return;
+  toast('Creando imagen…');
+  const climbs = s.climbs || [];
+  const disc = climbs.some((c) => c.discipline === 'boulder') ? 'boulder' : 'route';
+  const by = {};
+  climbs.filter((c) => c.discipline === disc).forEach((c) => { const r = (by[c.grade] ||= { label: M.gradeLabel(c, set()), color: toHex(M.gradeColor(c, set())), sent: 0, tried: 0, g: c.grade }); if (M.isSent(c)) r.sent++; else r.tried++; });
+  const sent = climbs.filter(M.isSent);
+  const best = [...sent].sort((a, b) => (a.discipline === b.discipline ? b.grade - a.grade : a.discipline === disc ? -1 : 1))[0];
+  const blob = await sessionImage({
+    name: set().name, title: titleOf(s).replace(' · ', ' de '), gym: set().gym,
+    date: I.parseDate(s.date).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' }),
+    with: (s.with || []).join(', '), mood: s.mood != null ? M.MOODS[s.mood] : '',
+    sent: sent.length, flash: climbs.filter((c) => statusOf(c.result) === 'flash').length, tried: climbs.length - sent.length,
+    rowsTitle: disc === 'route' ? 'Vías por grado' : 'Bloques por color',
+    rows: Object.values(by).sort((a, b) => b.g - a.g),
+    hardest: best ? { label: M.gradeLabel(best, set()), color: toHex(M.gradeColor(best, set())) } : null,
+  });
+  const file = new File([blob], `escalada-${s.date}.png`, { type: 'image/png' });
+  const url = URL.createObjectURL(blob);
+  state.shareFile = file;
+  openSheet(`<div class="sheet">
+    <div class="grabber"></div>
+    <div class="sheet-head"><span></span><b>Tu sesión</b><button class="link" data-action="close-sheet" type="button">Cerrar</button></div>
+    <div class="sheet-body"><img class="share-preview" src="${url}" alt="Imagen de la sesión"></div>
+    <div class="sheet-foot">
+      <a class="btn ghost" href="${url}" download="escalada-${s.date}.png">${icon('download')} Guardar</a>
+      ${navigator.canShare?.({ files: [file] }) ? `<button class="btn primary" data-action="share-file">${icon('share')} Compartir</button>` : ''}
+    </div></div>`);
 }
 
 function climbRow(c) {
@@ -735,6 +791,7 @@ async function openItemSheet(vlId) {
       <div class="ask"><b>¿Cómo te ha ido ${esc(whenText(state.draft))}?</b></div>
       ${statusButtons('item-log', vlId, inDraft?.result)}
       ${inDraft ? `<button type="button" class="link muted-link" data-action="item-remove" data-id="${esc(vlId)}">Quitar de la sesión</button>` : ''}
+      ${before.n ? `<button type="button" class="btn ghost danger sm forget" data-action="item-forget" data-id="${esc(vlId)}">${icon('trash')} ¿Te equivocaste? Borrarlo de tus sesiones</button>` : ''}
       ${detail?.map ? `<details class="map-mini"><summary>${icon('map')} Ver en el plano de la sala</summary>${S.topoHTML(detail.map, '#ff5a1f', { cls: 'small' })}</details>` : ''}
     </div></div>`;
   openSheet(draw(undefined), 'item-sheet');
@@ -861,9 +918,9 @@ function gymMapCard(sectors) {
 // ---------------- Progreso ----------------
 function viewProgress() {
   const tab = state.ui.progTab;
-  const tabs = seg('prog-tab', tab, { resumen: 'Resumen', cuerpo: 'Cuerpo', logros: 'Logros' });
+  const tabs = seg('prog-tab', tab, { resumen: 'Resumen', logros: 'Logros' });
   if (!state.sessions.length) return `<h1 class="page-title">Progreso</h1>${tabs}${emptyState('Aún no hay datos', 'Apunta tu primera sesión y aquí verás cómo mejoras.', '<a class="btn primary" href="#/nueva">Registrar sesión</a>', 'chart')}`;
-  const body = tab === 'cuerpo' ? progBody() : tab === 'logros' ? progAchievements() : progSummary();
+  const body = tab === 'logros' ? progAchievements() : progSummary();
   return `<h1 class="page-title">Progreso</h1>${tabs}${body}`;
 }
 
@@ -924,35 +981,8 @@ function topicsCard() {
 function ringColor(done, total, color) {
   const size = 64; const r = 26; const c = 2 * Math.PI * r; const p = total ? done / total : 0;
   return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true"><circle cx="32" cy="32" r="${r}" fill="none" stroke="var(--surface-2)" stroke-width="8"/>
-    <circle cx="32" cy="32" r="${r}" fill="none" stroke="${color}" stroke-width="8" stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - p)}" transform="rotate(-90 32 32)" style="filter:drop-shadow(0 0 .5px rgb(0 0 0 / .4))"/>
+    <circle cx="32" cy="32" r="${r}" fill="none" stroke="${color}" stroke-width="8" stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - p)}" transform="rotate(-90 32 32)" class="ring-fg" style="--len:${c};filter:drop-shadow(0 0 .5px rgb(0 0 0 / .4))"/>
     <text x="32" y="37" text-anchor="middle" class="ring-pct">${Math.round(p * 100)}%</text></svg>`;
-}
-
-const BODY_TIPS = {
-  dedos: 'Calienta de menos a más en presas grandes antes de apretar presas pequeñas y descansa ~48 h entre sesiones duras. Si notas dolor en la base del dedo, para.',
-  antebrazos: 'Estira los antebrazos y sacude los brazos en los descansos. Unos ejercicios con goma elástica ayudan a compensar.',
-  biceps: 'Haz también ejercicios de empuje (flexiones, fondos) para equilibrar.',
-  hombros: 'Calienta bien los hombros (círculos con los brazos, goma elástica) antes de los bloques desplomados.',
-  espalda: 'Compensa con flexiones y estiramientos de pecho y espalda.',
-  core: 'Planchas y elevaciones de piernas te ayudan a no despegar los pies en los desplomes.',
-  cadera: 'La movilidad de cadera (postura de la rana, mariposa) te acerca a la pared y ahorra fuerza.',
-  piernas: '¡Buena señal! Escalar con los pies ahorra brazos. Fíjate en poner bien los pies.',
-};
-const BODY_EMOJI = { dedos: '🤞', antebrazos: '💪', biceps: '💪', hombros: '🏋️', espalda: '🔙', core: '🎯', cadera: '🧘', piernas: '🦵' };
-
-function progBody() {
-  const range = state.ui.bodyRange;
-  const now = I.today();
-  const ss = range === 'all' ? state.sessions : state.sessions.filter((s) => I.daysBetween(s.date, now) < Number(range));
-  const bl = I.bodyLoad(ss, set());
-  const parts = Object.entries(bl.total).sort((a, b) => b[1] - a[1]);
-  return `${seg('body-range', range, { 28: '4 semanas', 90: '3 meses', all: 'Todo' })}
-    ${bl.sum ? `<div class="card body-card">${C.bodyMap(bl.total, bl.max)}
-      <div class="heat-legend"><span>Menos</span><i></i><span>Más</span></div></div>
-      <h2 class="section-title">Consejos</h2>
-      <div class="insights">${parts.slice(0, 3).map(([p]) => `<div class="insight info"><div class="ins-icon">${BODY_EMOJI[p]}</div><div><b>${M.BODY_PARTS[p]}</b><p>${BODY_TIPS[p]}</p></div></div>`).join('')}</div>
-      <p class="muted small note">${icon('info', 'inline')} Es una estimación orientativa según lo que escalas (color y tipo de bloque). No sustituye la opinión de un fisio.</p>`
-      : emptyState('Sin datos en este periodo', 'Apunta sesiones para ver qué partes del cuerpo trabajas más.', '<a class="btn primary" href="#/nueva">Registrar sesión</a>', 'body')}`;
 }
 
 function progAchievements() {
@@ -1002,7 +1032,7 @@ function viewSettings() {
         ${demoCount ? `<button class="btn ghost" data-action="demo-clear">Quitar datos de ejemplo (${demoCount})</button>` : '<button class="btn ghost" data-action="demo">Cargar datos de ejemplo</button>'}
         <button class="btn danger ghost" data-action="wipe">${icon('trash')} Borrar todo y empezar de cero</button>
       </div>
-      <p class="muted small">${plural(state.sessions.length, 'sesión', 'sesiones')} · ${plural(state.photos.size, 'foto', 'fotos')}</p>
+      <p class="muted small">${plural(state.sessions.length, 'sesión', 'sesiones')} · ${plural(state.photos.size, 'foto', 'fotos')}${state.persisted ? ' · ✓ guardado de forma permanente en este móvil' : ''}${set().lastBackup ? ` · última copia ${ago(set().lastBackup)}` : ''}</p>
     </div>
     <p class="muted small center about">Cuaderno de Escalada · app no oficial, sin relación con Sharma Climbing.<br>Los bloques y vías de la sala proceden del widget público de Vertical-Life.</p>`;
 }
@@ -1060,6 +1090,7 @@ async function saveSession() {
   if (i >= 0) state.sessions[i] = session; else state.sessions.push(session);
   await clearDraft();
   state.ui.logOpen = false; state.ui.routeRows = [];
+  protectStorage();
   haptic([10, 40, 10]);
   if (isNew) celebrate();
   toast(isNew ? '¡Sesión guardada! 💪' : 'Cambios guardados');
@@ -1096,6 +1127,8 @@ async function exportData() {
   const a = Object.assign(document.createElement('a'), { href: url, download: `escalada-${I.today()}.json` });
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
+  state.settings.lastBackup = Date.now(); await saveSettings();
+  if (route() === 'inicio') rerender();
 }
 
 async function importData(file) {
@@ -1206,9 +1239,20 @@ const actions = {
   'hist-tab'(el) { state.ui.histTab = el.dataset.v || el.dataset.tab; if (location.hash === '#/diario') rerender(); },
   'prog-tab'(el) { state.ui.progTab = el.dataset.v; if (location.hash === '#/progreso') rerender(); },
   'prog-disc'(el) { state.ui.progDisc = el.dataset.v; rerender(); },
-  'body-range'(el) { state.ui.bodyRange = el.dataset.v; rerender(); },
   async theme(el) { state.settings.theme = el.dataset.v; applyTheme(); await saveSettings(); rerender(); },
   photo(el) { openPhoto(el.dataset.id); },
+  'share-img'(el) { shareSessionImage(el.dataset.id); },
+  async 'share-file'() {
+    try { await navigator.share({ files: [state.shareFile], text: '🧗‍♀️ Mi sesión de escalada' }); } catch { /* cancelado */ }
+  },
+  async 'item-forget'(el) {
+    if (!armed(el, '¿Seguro? Toca otra vez para borrarlo')) return;
+    const id = el.dataset.id; const changed = [];
+    state.sessions.forEach((s) => { const n = (s.climbs || []).length; s.climbs = (s.climbs || []).filter((c) => c.vlId !== id); if (s.climbs.length !== n) changed.push(s); });
+    if (changed.length) await db.putMany('sessions', changed);
+    if (state.draft) { state.draft.climbs = state.draft.climbs.filter((c) => c.vlId !== id); saveDraftSoon(); }
+    closeSheet(); toast('Borrado de tus sesiones'); rerender();
+  },
   async share(el) {
     const s = state.sessions.find((x) => x.id === el.dataset.id);
     const text = shareText(s);
@@ -1218,7 +1262,7 @@ const actions = {
     } catch { /* cancelado */ }
   },
   async 'delete-session'(el) {
-    if (!confirm('¿Eliminar esta sesión y sus fotos?')) return;
+    if (!armed(el, '¿Seguro? Toca otra vez para eliminarla')) return;
     const id = el.dataset.id;
     const photoIds = sessionPhotos(id).map((p) => p.id);
     await db.del('sessions', id); await db.delMany('photos', photoIds);
@@ -1257,6 +1301,7 @@ const actions = {
       d.climbs.splice(idx, 1); haptic(4);
     }
     saveDraftSoon(); rerender();
+    $(`.ctr button[data-g="${g}"][data-r="${r}"]`)?.parentElement.querySelector('b')?.classList.add('bump');
   },
   'route-row'(el) { state.ui.routeRows = [...new Set([...state.ui.routeRows, Number(el.dataset.v)])]; rerender(); },
   'log-open'(el, e) { e.preventDefault(); state.ui.logOpen = !el.closest('details').open; rerender(); },
