@@ -20,7 +20,7 @@ const state = {
   sessions: [], settings: { ...DEFAULT_SETTINGS }, photos: new Map(), urls: new Map(),
   draft: null, stash: null, gym: null, gymLoading: false, gymSectors: {}, installEvt: null,
   ui: {
-    histTab: 'sessions', progTab: 'resumen', progDisc: 'boulder', bodyRange: '28',
+    histTab: 'sessions', progTab: 'resumen', profTab: 'diario', progDisc: 'boulder', bodyRange: '28',
     gymDisc: 'boulder', gymSector: 'all', gymCircuit: 'all', gymFilter: 'all', gymMap: false, onb: 0,
     logDisc: 'boulder', logCircuit: null, logSector: 'all', logOpen: false, routeRows: [], tip: 0,
   },
@@ -75,6 +75,8 @@ async function init() {
   if (!state.settings.seenAch) state.settings.seenAch = '__init__';
   if (settings) await db.put('settings', state.settings);
   photos.forEach((p) => state.photos.set(p.id, p));
+  const av = await db.get('settings', 'avatar');
+  if (av?.blob) state.avatarURL = URL.createObjectURL(av.blob);
   if (draft?.value) state.draft = { newPhotos: [], removedPhotos: [], ...draft.value };
   if (mig.changed && state.draft) await db.put('settings', { key: 'draft', value: state.draft });
   applyTheme();
@@ -126,21 +128,22 @@ async function loadGym(force = false) {
   state.gymLoading = true;
   if (['sala', 'nueva'].includes(route())) rerender();
   try { state.gym = await S.getGym({ force }); } finally { state.gymLoading = false; }
-  if (['sala', 'inicio', 'nueva', 'progreso', 'eventos'].includes(route()) && !document.querySelector('dialog[open]')) rerender();
+  if (['sala', 'inicio', 'nueva', 'perfil', 'eventos'].includes(route()) && !document.querySelector('dialog[open]')) rerender();
 }
 
 // ---------------- Router ----------------
 const routes = [
   [/^#?\/?(inicio)?$/, viewHome, 'inicio'],
-  [/^#\/diario$/, viewHistory, 'diario'],
-  [/^#\/historial$/, viewHistory, 'diario'],
-  [/^#\/sesion\/([\w-]+)$/, viewDetail, 'diario'],
+  [/^#\/perfil$/, viewProfile, 'perfil'],
+  [/^#\/diario$/, () => { state.ui.profTab = 'diario'; return viewProfile(); }, 'perfil'],
+  [/^#\/historial$/, () => { state.ui.profTab = 'diario'; return viewProfile(); }, 'perfil'],
+  [/^#\/sesion\/([\w-]+)$/, viewDetail, 'perfil'],
   [/^#\/nueva$/, viewEditor, 'nueva'],
   [/^#\/editar\/([\w-]+)$/, viewEditor, 'nueva'],
   [/^#\/sala$/, viewGym, 'sala'],
-  [/^#\/progreso$/, viewProgress, 'progreso'],
-  [/^#\/cuerpo$/, viewProgress, 'progreso'],
-  [/^#\/ajustes$/, viewSettings, 'ajustes'],
+  [/^#\/progreso$/, () => { state.ui.profTab = state.ui.profTab === 'logros' ? 'logros' : 'progreso'; return viewProfile(); }, 'perfil'],
+  [/^#\/cuerpo$/, () => { state.ui.profTab = 'progreso'; return viewProfile(); }, 'perfil'],
+  [/^#\/ajustes$/, viewSettings, 'perfil'],
   [/^#\/eventos$/, viewEvents, 'eventos'],
 ];
 const route = () => document.body.dataset.route;
@@ -274,6 +277,13 @@ const ago = (ts) => {
   return d <= 0 ? 'hoy' : d === 1 ? 'ayer' : d < 7 ? `hace ${d} días` : d < 30 ? `hace ${Math.floor(d / 7)} sem` : `hace ${Math.floor(d / 30)} mes${d >= 60 ? 'es' : ''}`;
 };
 
+function avatarHTML(size = '') {
+  const name = set().name?.trim() || '';
+  return state.avatarURL
+    ? `<span class="avatar ${size}"><img src="${state.avatarURL}" alt=""></span>`
+    : `<span class="avatar ${size}">${esc((name || '🧗').slice(0, 1).toUpperCase())}</span>`;
+}
+
 function sessionCard(s) {
   const climbs = s.climbs || [];
   const sent = climbs.filter(M.isSent).length;
@@ -348,7 +358,7 @@ function viewHome() {
   return `<header class="home-head">
       <div><p class="eyebrow">${esc(now.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' }))}</p>
       <h1>${hello}${name ? `, ${esc(name)}` : ''}</h1></div>
-      <a href="#/ajustes" class="avatar" aria-label="Ajustes">${esc((name || '🧗').slice(0, 1).toUpperCase())}</a>
+      <a href="#/perfil" aria-label="Tu perfil">${avatarHTML()}</a>
     </header>
     ${live}${plan ? planCardHTML(plan) : ''}
     <section class="hero">
@@ -364,9 +374,9 @@ function viewHome() {
     ${trying.length ? `<section><div class="section-head"><h2 class="section-title">Bloques que estás intentando</h2><a href="#/sala" data-action="gym-filter-trying">Ver todos</a></div>
       <p class="muted small sub">Bloques que has intentado y siguen montados. ¡A por ellos!</p>
       <div class="tiles-row">${trying.map((x) => itemTile(x, itemStatus(log.get(x.vlId)))).join('')}</div></section>` : ''}
-    ${last ? `<section><div class="section-head"><h2 class="section-title">Tu última sesión</h2><a href="#/diario">Diario</a></div>${sessionCard(last)}</section>` : ''}
+    ${last ? `<section><div class="section-head"><h2 class="section-title">Tu última sesión</h2><a href="#/diario">Ver todas</a></div>${sessionCard(last)}</section>` : ''}
     ${insights.length ? `<section><h2 class="section-title">Para ti</h2><div class="insights">${[...noteInsights(), ...insights].slice(0, 2).map(insightCard).join('')}</div></section>` : ''}
-    ${newsCard()}
+    ${homeEvents()}
     ${backupCard()}
     ${installCard()}
     ${!s.length ? `<div class="card soft center"><p>¿Quieres ver cómo queda con datos? Puedes cargar datos de ejemplo y borrarlos después en Ajustes.</p><button class="btn ghost" data-action="demo">Ver con datos de ejemplo</button></div>` : ''}`;
@@ -469,23 +479,34 @@ function newBlocks(days = 30) {
     .sort((a, b) => b.date.localeCompare(a.date) || a.sector.localeCompare(b.sector));
 }
 
-function newsCard() {
+// Tarjeta visual de evento (con la imagen del evento si la hay).
+function evTile(e) {
+  const d = evDate(e.start);
+  const img = e.image && /^https:\/\//.test(e.image) ? e.image : null;
+  const hue = [...(e.title || '')].reduce((a, c) => a + c.charCodeAt(0), 0) % 360;
+  return `<a class="ev-tile ${img ? 'has-img' : ''}" ${e.url && /^https?:\/\//.test(e.url) ? `href="${esc(e.url)}" target="_blank" rel="noopener"` : 'href="#/eventos"'} style="--h:${hue}">
+    ${img ? `<img src="${esc(img)}" alt="" loading="lazy" onerror="this.remove()">` : ''}
+    <span class="ev-badge"><b>${d.getDate()}</b>${esc(d.toLocaleDateString('es-ES', { month: 'short' }).replace('.', ''))}</span>
+    <span class="ev-tile-txt"><small>${e.source === 'mine' ? 'Apuntado por ti' : esc((e.cats || [])[0] || 'Sharma')}</small><b>${esc(e.title)}</b></span>
+  </a>`;
+}
+
+function homeEvents() {
   const now = new Date();
   const upcoming = allEvents().filter((e) => evDate(e.end || e.start) >= now);
-  const fresh = gymItems().filter((x) => Date.now() - x.date < WEEK);
-  if (!upcoming.length && !fresh.length && !state.gym) return '';
-  const ev = upcoming[0];
-  return `<a class="card news" href="#/eventos">
-    <div class="gt-head"><span class="gt-icon">${icon('sparkle')}</span><div><b>Eventos y novedades</b>
-      <small>${ev ? `${esc(ev.title)} · ${esc(evDay(ev.start))}` : 'Sin eventos próximos ahora mismo'}</small></div>${icon('chevron', 'muted')}</div>
-    ${fresh.length ? `<p class="news-line">${icon('wall')} ${plural(fresh.length, 'bloque o vía nueva', 'bloques y vías nuevos')} esta semana</p>` : ''}
-  </a>`;
+  const fresh = gymItems().filter((x) => Date.now() - x.date < WEEK).length;
+  return `<section class="home-events"><div class="section-head"><h2 class="section-title">Eventos</h2><a href="#/eventos">Ver todo</a></div>
+    ${upcoming.length ? `<div class="ev-carousel">${upcoming.slice(0, 6).map((e) => evTile(e)).join('')}</div>`
+      : `<a class="card ev-empty" href="#/eventos"><span>🎉</span><div><b>Sin eventos próximos</b><small>${fresh ? `Pero hay ${plural(fresh, 'bloque nuevo', 'bloques nuevos')} en la sala esta semana` : 'Mira las novedades de la sala'}</small></div>${icon('chevron', 'muted')}</a>`}
+  </section>`;
 }
 
 function eventCard(e, past = false) {
   const d = evDate(e.start);
   const multi = e.end && e.end.slice(0, 10) !== e.start.slice(0, 10);
-  return `<div class="card event ${past ? 'past' : ''}">
+  const img = e.image && /^https:\/\//.test(e.image) ? e.image : null;
+  return `<div class="card event ${past ? 'past' : ''} ${img ? 'with-img' : ''}">
+    ${img ? `<img class="ev-img" src="${esc(img)}" alt="" loading="lazy" onerror="this.remove()">` : ''}
     <div class="ev-date"><b>${d.getDate()}</b><span>${d.toLocaleDateString('es-ES', { month: 'short' }).replace('.', '')}</span></div>
     <div class="ev-main">
       <div class="ev-tags">${e.source === 'mine' ? '<span class="ev-tag mine">Apuntado por ti</span>' : '<span class="ev-tag">Sharma</span>'}${(e.cats || []).map((c) => `<span class="ev-tag">${esc(c)}</span>`).join('')}</div>
@@ -502,26 +523,33 @@ function viewEvents() {
   const evs = allEvents();
   const upcoming = evs.filter((e) => evDate(e.end || e.start) >= now);
   const past = evs.filter((e) => evDate(e.end || e.start) < now).reverse().slice(0, 6);
-  const blocks = newBlocks(30).slice(0, 6);
+  const blocks = newBlocks(30).slice(0, 8);
   const scale = M.boulderScale(set());
   const fetched = state.events?.fetchedAt;
-  return `<div class="topline"><a href="#/inicio" class="back">${icon('back')} Inicio</a><button class="btn sm" data-action="myev-add">${icon('plus')} Apuntar evento</button></div>
-    <h1 class="page-title">Eventos y novedades</h1>
-    <h2 class="section-title">Próximos eventos</h2>
+  return `<section class="ev-hero">
+      <p class="eyebrow">${esc(S.GYM.name)}</p>
+      <h1>Eventos</h1>
+      <p>Lo que pasa en tu rocódromo: eventos, bloques nuevos y planes.</p>
+      <button class="btn light sm" data-action="myev-add">${icon('plus')} Apuntar evento</button>
+    </section>
+    <h2 class="section-title">Próximos</h2>
     ${upcoming.length ? `<div class="list">${upcoming.map((e) => eventCard(e)).join('')}</div>`
-      : `<div class="card soft"><p class="muted small">Ahora mismo el Sharma no tiene eventos publicados en su web. ¿Has visto algo en su Instagram (Black Friday, Día del Socio…)? Apúntalo con «Apuntar evento».</p></div>`}
+      : `<div class="card ev-none"><span>📭</span><div><b>No hay eventos publicados</b><small>¿Has visto algo en su Instagram (Black Friday, Día del Socio…)? Apúntalo arriba.</small></div></div>`}
     <a class="card ig" href="${SHARMA_IG}" target="_blank" rel="noopener"><span class="ig-ic">📷</span><div><b>Instagram del Sharma Madrid</b><small>Promociones, avisos y novedades del día a día</small></div>${icon('external', 'muted')}</a>
-    ${blocks.length ? `<h2 class="section-title">Bloques y vías nuevos</h2>
-      <div class="list">${blocks.map((b) => {
+    ${blocks.length ? `<div class="section-head"><h2 class="section-title">Bloques nuevos</h2><a href="#/sala" data-action="gym-filter-new">Ver en la sala</a></div>
+      <div class="nb-carousel">${blocks.map((b) => {
         const byColor = {};
         b.list.forEach((x) => { byColor[x.grade] = (byColor[x.grade] || 0) + 1; });
-        return `<button class="card new-block" data-action="news-sector" data-sector="${esc(b.sector)}" data-kind="${b.list[0].kind}" data-recent="${Date.now() - b.list[0].date < WEEK ? 1 : ''}">
-          <div class="nb-head"><b>${esc(b.sector)}</b><small class="muted">${esc(P.niceDate(b.date))} · ${plural(b.list.length, b.list[0].kind === 'route' ? 'vía nueva' : 'bloque nuevo', b.list[0].kind === 'route' ? 'vías nuevas' : 'bloques nuevos')}</small></div>
-          <div class="nb-colors">${Object.entries(byColor).sort((x, y) => (scale.findIndex((g) => g.name === x[0]) - scale.findIndex((g) => g.name === y[0])) || x[0].localeCompare(y[0])).map(([g, n]) => `<span class="grade xs" style="${C.gradeStyle(itemGradeColor(b.list.find((x) => x.grade === g)))}">${esc(g)} ×${n}</span>`).join('')}</div>
+        const dots = Object.entries(byColor).sort((x, y) => (scale.findIndex((g) => g.name === x[0]) - scale.findIndex((g) => g.name === y[0])) || x[0].localeCompare(y[0]))
+          .map(([g, n]) => `<i style="background:${itemGradeColor(b.list.find((x) => x.grade === g))}" title="${esc(g)}"></i>`.repeat(Math.min(n, 6))).join('');
+        return `<button class="nb-card" data-action="news-sector" data-sector="${esc(b.sector)}" data-kind="${b.list[0].kind}" data-recent="${Date.now() - b.list[0].date < WEEK ? 1 : ''}">
+          <small>${esc(P.niceDate(b.date))}</small><b>${esc(b.sector)}</b>
+          <span class="nb-n">${b.list.length}<em>${b.list[0].kind === 'route' ? (b.list.length === 1 ? 'vía nueva' : 'vías nuevas') : (b.list.length === 1 ? 'bloque nuevo' : 'bloques nuevos')}</em></span>
+          <span class="nb-dots">${dots}</span>
         </button>`;
       }).join('')}</div>` : ''}
-    ${past.length ? `<h2 class="section-title">Eventos anteriores</h2><div class="list">${past.map((e) => eventCard(e, true)).join('')}</div>` : ''}
-    <p class="muted small center src">Los eventos de la web del Sharma y los bloques se actualizan solos cada día${fetched ? ` · última vez ${ago(fetched)}` : ''}.</p>`;
+    ${past.length ? `<h2 class="section-title">Anteriores</h2><div class="ev-carousel">${past.map((e) => evTile(e)).join('')}</div>` : ''}
+    <p class="muted small center src">Se actualiza solo cada día${fetched ? ` · última vez ${ago(fetched)}` : ''}.</p>`;
 }
 
 function myEventSheet() {
@@ -591,19 +619,47 @@ function viewOnboarding() {
 }
 
 // ---------------- Diario ----------------
-function viewHistory() {
+// ---------------- Perfil ----------------
+function viewProfile() {
+  const st = set();
+  const ss = state.sessions;
+  const first = ss.length ? I.sortSessions(ss)[ss.length - 1].date : null;
+  const sent = I.allClimbs(ss).filter((c) => M.isSent(c) && c.discipline === 'boulder');
+  const best = sent.length ? sent.reduce((m, c) => (c.grade > m.grade ? c : m)) : null;
+  const ach = achievementsNow();
+  const got = ach.reduce((a, x) => a + x.level, 0);
+  const tab = state.ui.profTab;
+  const body = tab === 'logros' ? (ss.length ? progAchievements() : emptyState('Aún sin logros', 'Apunta tu primera sesión para empezar a desbloquearlos.', '<a class="btn primary" href="#/nueva">Registrar sesión</a>', 'trophy'))
+    : tab === 'progreso' ? (ss.length ? progSummary() : emptyState('Aún no hay datos', 'Apunta tu primera sesión y aquí verás cómo mejoras.', '<a class="btn primary" href="#/nueva">Registrar sesión</a>', 'chart'))
+      : historyBody();
+  return `<section class="profile">
+      <a href="#/ajustes" class="icon-btn ghost prof-gear" aria-label="Ajustes">${icon('settings')}</a>
+      <label class="prof-photo" aria-label="Cambiar foto de perfil">${avatarHTML('xl')}<span class="prof-cam">${icon('camera')}</span><input type="file" accept="image/*" data-upload="avatar" hidden></label>
+      <h1>${esc(st.name || 'Tu perfil')}</h1>
+      <p class="prof-sub">${first ? `Escalando desde ${esc(I.parseDate(first).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }))}` : 'Bienvenida a tu cuaderno'} · ${esc(S.GYM.name.replace('Sharma Climbing', 'Sharma'))}</p>
+      ${best ? `<div class="prof-level">Nivel ${gradeChip(best, 'sm')}</div>` : ''}
+      <div class="prof-stats">
+        <div><b>${ss.length}</b><span>sesiones</span></div>
+        <div><b>${I.allClimbs(ss).filter(M.isSent).length}</b><span>conseguidos</span></div>
+        <div><b>${got}</b><span>logros</span></div>
+      </div>
+    </section>
+    ${seg('prof-tab', tab, { diario: 'Sesiones', progreso: 'Progreso', logros: 'Logros' })}
+    ${body}`;
+}
+
+function historyBody() {
   const { histTab } = state.ui;
-  const tabs = seg('hist-tab', histTab, { sessions: 'Sesiones', photos: 'Fotos' });
+  const tabs = `<div class="chips">${Object.entries({ sessions: 'Lista', photos: 'Fotos' }).map(([k, v]) => `<button class="chip sm ${histTab === k ? 'on' : ''}" data-action="hist-tab" data-v="${k}">${v}</button>`).join('')}</div>`;
   if (histTab === 'photos') {
     const photos = [...state.photos.values()].sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.createdAt - a.createdAt);
-    return `<h1 class="page-title">Diario</h1>${tabs}
-      ${photos.length ? `<div class="gallery">${photos.map((p) => `<button class="thumb" data-action="photo" data-id="${p.id}"><img src="${photoURL(p.id)}" alt="" loading="lazy"></button>`).join('')}</div>`
-        : emptyState('Sin fotos todavía', 'Puedes añadir fotos al apuntar una sesión.', '', 'camera')}`;
+    return `${tabs}${photos.length ? `<div class="gallery">${photos.map((p) => `<button class="thumb" data-action="photo" data-id="${p.id}"><img src="${photoURL(p.id)}" alt="" loading="lazy"></button>`).join('')}</div>`
+      : emptyState('Sin fotos todavía', 'Puedes añadir fotos al apuntar una sesión.', '', 'camera')}`;
   }
   const list = I.sortSessions(state.sessions);
   const groups = {};
-  list.forEach((s) => { const k = s.date.slice(0, 7); (groups[k] ||= []).push(s); });
-  return `<h1 class="page-title">Diario</h1>${tabs}
+  list.forEach((x) => { const k = x.date.slice(0, 7); (groups[k] ||= []).push(x); });
+  return `${list.length ? tabs : ''}
     ${list.length ? Object.entries(groups).map(([k, ss]) => {
       const [y, m] = k.split('-').map(Number);
       const label = new Date(y, m - 1, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
@@ -625,7 +681,7 @@ function viewDetail(id) {
   const byGrade = {};
   climbs.forEach((c) => { const k = `${c.discipline}|${c.grade}`; const r = (byGrade[k] ||= { c, sent: 0, tried: 0 }); if (M.isSent(c)) r.sent++; else r.tried++; });
   const rows = Object.values(byGrade).sort((a, b) => a.c.discipline.localeCompare(b.c.discipline) || b.c.grade - a.c.grade);
-  return `<div class="topline"><a href="#/diario" class="back">${icon('back')} Diario</a>
+  return `<div class="topline"><a href="#/diario" class="back">${icon('back')} Mis sesiones</a>
       <a class="btn sm" href="#/editar/${s.id}">${icon('edit')} Editar</a></div>
     <p class="eyebrow">${esc(date)}</p>
     <h1 class="page-title">${esc(titleOf(s))}${s.mood != null ? ` ${M.MOODS[s.mood]}` : ''}</h1>
@@ -1022,14 +1078,6 @@ function gymMapCard(sectors) {
 }
 
 // ---------------- Progreso ----------------
-function viewProgress() {
-  const tab = state.ui.progTab;
-  const tabs = seg('prog-tab', tab, { resumen: 'Resumen', logros: 'Logros' });
-  if (!state.sessions.length) return `<h1 class="page-title">Progreso</h1>${tabs}${emptyState('Aún no hay datos', 'Apunta tu primera sesión y aquí verás cómo mejoras.', '<a class="btn primary" href="#/nueva">Registrar sesión</a>', 'chart')}`;
-  const body = tab === 'logros' ? progAchievements() : progSummary();
-  return `<h1 class="page-title">Progreso</h1>${tabs}${body}`;
-}
-
 function progSummary() {
   const s = state.sessions;
   const disc = state.ui.progDisc;
@@ -1116,9 +1164,11 @@ function viewSettings() {
   const st = set();
   const scale = M.boulderScale(st);
   const demoCount = state.sessions.filter((s) => s.demo).length;
-  return `<div class="topline"><a href="#/inicio" class="back">${icon('back')} Inicio</a></div>
+  return `<div class="topline"><a href="#/perfil" class="back">${icon('back')} Perfil</a></div>
     <h1 class="page-title">Ajustes</h1>
     <div class="card form">
+      <div class="set-avatar"><label class="prof-photo sm" aria-label="Cambiar foto">${avatarHTML('lg')}<span class="prof-cam">${icon('camera')}</span><input type="file" accept="image/*" data-upload="avatar" hidden></label>
+        <div><b>Foto de perfil</b><small class="muted">Toca para cambiarla</small>${state.avatarURL ? '<button class="link danger" data-action="avatar-del">Quitar foto</button>' : ''}</div></div>
       <label class="field"><span>Tu nombre</span><input data-setting="name" value="${esc(st.name)}" placeholder="¿Cómo te llamas?"></label>
       <div class="field"><span>Objetivo semanal</span><div class="seg">${[1, 2, 3].map((n) => `<button class="${(st.weeklyGoal || 1) === n ? 'on' : ''}" data-action="set-goal" data-v="${n}">${plural(n, 'sesión', 'sesiones')}</button>`).join('')}</div></div>
       <div class="field"><span>Aspecto</span>${seg('theme', st.theme || 'light', { light: 'Claro', dark: 'Oscuro', auto: 'Como el móvil' })}</div>
@@ -1248,7 +1298,8 @@ function logItem(vlId, status) {
 async function exportData() {
   toast('Preparando copia…');
   const photos = await Promise.all([...state.photos.values()].map(async ({ blob, ...p }) => ({ ...p, data: await blobToDataURL(blob) })));
-  const data = { app: 'cuaderno-escalada', version: 2, exportedAt: new Date().toISOString(), settings: state.settings, sessions: state.sessions, photos };
+  const av = await db.get('settings', 'avatar');
+  const data = { app: 'cuaderno-escalada', version: 2, exportedAt: new Date().toISOString(), settings: state.settings, sessions: state.sessions, photos, avatar: av?.blob ? await blobToDataURL(av.blob) : null };
   const url = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' }));
   const a = Object.assign(document.createElement('a'), { href: url, download: `escalada-${I.today()}.json` });
   document.body.appendChild(a); a.click(); a.remove();
@@ -1275,6 +1326,7 @@ async function importData(file) {
     await saveSettings();
     sessions.forEach((s) => { const i = state.sessions.findIndex((x) => x.id === s.id); if (i >= 0) state.sessions[i] = s; else state.sessions.push(s); });
     photos.forEach((p) => state.photos.set(p.id, p));
+    if (data.avatar) { const blob = await dataURLToBlob(data.avatar); await db.put('settings', { key: 'avatar', blob }); state.avatarURL = URL.createObjectURL(blob); }
     applyTheme();
     toast('Copia restaurada ✅');
     render();
@@ -1313,6 +1365,8 @@ const actions = {
     state.urls.forEach((u) => URL.revokeObjectURL(u)); state.urls.clear();
     Object.assign(state, { sessions: [], draft: null, stash: null, settings: { ...DEFAULT_SETTINGS, seenAch: [] } });
     state.photos.clear(); state.ui.onb = 0;
+    if (state.avatarURL) URL.revokeObjectURL(state.avatarURL);
+    state.avatarURL = null;
     applyTheme();
     toast('Todo borrado. ¡Como recién instalada!');
     go('#/inicio');
@@ -1362,8 +1416,9 @@ const actions = {
   },
   'start-session'() { const d = ensureDraft(); if (d && !d.startedAt && !d.climbs.length && d.date === I.today()) { d.startedAt = Date.now(); saveDraftSoon(); } },
   export: exportData,
-  'hist-tab'(el) { state.ui.histTab = el.dataset.v || el.dataset.tab; if (location.hash === '#/diario') rerender(); },
-  'prog-tab'(el) { state.ui.progTab = el.dataset.v; if (location.hash === '#/progreso') rerender(); },
+  'hist-tab'(el) { state.ui.histTab = el.dataset.v || el.dataset.tab; state.ui.profTab = 'diario'; if (route() === 'perfil') rerender(); },
+  'prof-tab'(el) { state.ui.profTab = el.dataset.v; rerender(); },
+  'prog-tab'(el) { state.ui.profTab = el.dataset.v === 'logros' ? 'logros' : 'progreso'; if (route() === 'perfil') rerender(); },
   'prog-disc'(el) { state.ui.progDisc = el.dataset.v; rerender(); },
   async theme(el) { state.settings.theme = el.dataset.v; applyTheme(); await saveSettings(); rerender(); },
   photo(el) { openPhoto(el.dataset.id); },
@@ -1432,6 +1487,11 @@ const actions = {
   },
   'route-row'(el) { state.ui.routeRows = [...new Set([...state.ui.routeRows, Number(el.dataset.v)])]; rerender(); },
   'log-open'(el, e) { e.preventDefault(); state.ui.logOpen = !el.closest('details').open; rerender(); },
+  async 'avatar-del'() {
+    await db.del('settings', 'avatar');
+    if (state.avatarURL) URL.revokeObjectURL(state.avatarURL);
+    state.avatarURL = null; rerender();
+  },
   'myev-add'() { myEventSheet(); },
   async 'myev-save'() {
     const val = (k) => ($(`[data-myev="${k}"]`)?.value || '').trim();
@@ -1605,6 +1665,13 @@ async function onChange(e) {
   const files = [...el.files];
   el.value = '';
   if (el.dataset.upload === 'import') return importData(files[0]);
+  if (el.dataset.upload === 'avatar') {
+    const blob = await compressImage(files[0], 512, 0.86);
+    await db.put('settings', { key: 'avatar', blob });
+    if (state.avatarURL) URL.revokeObjectURL(state.avatarURL);
+    state.avatarURL = URL.createObjectURL(blob);
+    toast('¡Foto de perfil actualizada!'); rerender(); return;
+  }
   toast('Procesando foto…');
   await addPhotos(files);
   rerender();
