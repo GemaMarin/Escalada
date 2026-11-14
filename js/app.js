@@ -90,7 +90,17 @@ async function init() {
   setupSheetGestures();
   render();
   document.body.classList.add('ready');
-  if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+    const hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((r) => r.update()).catch(() => {});
+    // Si llega una versión nueva con la app abierta, recarga una vez (el borrador ya está guardado).
+    let reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || reloading) return;
+      reloading = true; saveDraftNow();
+      setTimeout(() => location.reload(), 300);
+    });
+  }
   protectStorage();
   if (set().liveGym !== false) loadGym();
   loadEvents();
@@ -128,7 +138,7 @@ async function loadGym(force = false) {
   state.gymLoading = true;
   if (['sala', 'nueva'].includes(route())) rerender();
   try { state.gym = await S.getGym({ force }); } finally { state.gymLoading = false; }
-  if (['sala', 'inicio', 'nueva', 'perfil', 'eventos'].includes(route()) && !document.querySelector('dialog[open]')) rerender();
+  if (['sala', 'inicio', 'nueva', 'perfil', 'eventos', 'progreso'].includes(route()) && !document.querySelector('dialog[open]')) rerender();
 }
 
 // ---------------- Router ----------------
@@ -141,8 +151,8 @@ const routes = [
   [/^#\/nueva$/, viewEditor, 'nueva'],
   [/^#\/editar\/([\w-]+)$/, viewEditor, 'nueva'],
   [/^#\/sala$/, viewGym, 'sala'],
-  [/^#\/progreso$/, () => { state.ui.profTab = state.ui.profTab === 'logros' ? 'logros' : 'progreso'; return viewProfile(); }, 'perfil'],
-  [/^#\/cuerpo$/, () => { state.ui.profTab = 'progreso'; return viewProfile(); }, 'perfil'],
+  [/^#\/progreso$/, viewProgress, 'progreso'],
+  [/^#\/cuerpo$/, viewProgress, 'progreso'],
   [/^#\/ajustes$/, viewSettings, 'perfil'],
   [/^#\/eventos$/, viewEvents, 'eventos'],
 ];
@@ -628,12 +638,8 @@ function viewProfile() {
   const best = sent.length ? sent.reduce((m, c) => (c.grade > m.grade ? c : m)) : null;
   const ach = achievementsNow();
   const got = ach.reduce((a, x) => a + x.level, 0);
-  const tab = state.ui.profTab;
-  const body = tab === 'logros' ? (ss.length ? progAchievements() : emptyState('Aún sin logros', 'Apunta tu primera sesión para empezar a desbloquearlos.', '<a class="btn primary" href="#/nueva">Registrar sesión</a>', 'trophy'))
-    : tab === 'progreso' ? (ss.length ? progSummary() : emptyState('Aún no hay datos', 'Apunta tu primera sesión y aquí verás cómo mejoras.', '<a class="btn primary" href="#/nueva">Registrar sesión</a>', 'chart'))
-      : historyBody();
-  return `<section class="profile">
-      <a href="#/ajustes" class="icon-btn ghost prof-gear" aria-label="Ajustes">${icon('settings')}</a>
+  return `<div class="topline"><a href="#/inicio" class="back">${icon('back')} Inicio</a><a href="#/ajustes" class="icon-btn ghost" aria-label="Ajustes">${icon('settings')}</a></div>
+    <section class="profile">
       <label class="prof-photo" aria-label="Cambiar foto de perfil">${avatarHTML('xl')}<span class="prof-cam">${icon('camera')}</span><input type="file" accept="image/*" data-upload="avatar" hidden></label>
       <h1>${esc(st.name || 'Tu perfil')}</h1>
       <p class="prof-sub">${first ? `Escalando desde ${esc(I.parseDate(first).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }))}` : 'Bienvenida a tu cuaderno'} · ${esc(S.GYM.name.replace('Sharma Climbing', 'Sharma'))}</p>
@@ -644,8 +650,12 @@ function viewProfile() {
         <div><b>${got}</b><span>logros</span></div>
       </div>
     </section>
-    ${seg('prof-tab', tab, { diario: 'Sesiones', progreso: 'Progreso', logros: 'Logros' })}
-    ${body}`;
+    <div class="prof-links">
+      <a class="card prof-link" href="#/progreso" data-action="prog-tab" data-v="resumen">${icon('chart')}<span><b>Tu progreso</b><small>Nivel, colores y semanas</small></span>${icon('chevron', 'muted')}</a>
+      <a class="card prof-link" href="#/progreso" data-action="prog-tab" data-v="logros">${icon('trophy')}<span><b>Tus logros</b><small>${got} conseguidos</small></span>${icon('chevron', 'muted')}</a>
+    </div>
+    <h2 class="section-title">Mis sesiones</h2>
+    ${historyBody()}`;
 }
 
 function historyBody() {
@@ -1078,6 +1088,14 @@ function gymMapCard(sectors) {
 }
 
 // ---------------- Progreso ----------------
+function viewProgress() {
+  const tab = state.ui.progTab;
+  const tabs = seg('prog-tab', tab, { resumen: 'Resumen', logros: 'Logros' });
+  if (!state.sessions.length) return `<h1 class="page-title">Progreso</h1>${tabs}${emptyState('Aún no hay datos', 'Apunta tu primera sesión y aquí verás cómo mejoras.', '<a class="btn primary" href="#/nueva">Registrar sesión</a>', 'chart')}`;
+  const body = tab === 'logros' ? progAchievements() : progSummary();
+  return `<h1 class="page-title">Progreso</h1>${tabs}${body}`;
+}
+
 function progSummary() {
   const s = state.sessions;
   const disc = state.ui.progDisc;
@@ -1418,7 +1436,7 @@ const actions = {
   export: exportData,
   'hist-tab'(el) { state.ui.histTab = el.dataset.v || el.dataset.tab; state.ui.profTab = 'diario'; if (route() === 'perfil') rerender(); },
   'prof-tab'(el) { state.ui.profTab = el.dataset.v; rerender(); },
-  'prog-tab'(el) { state.ui.profTab = el.dataset.v === 'logros' ? 'logros' : 'progreso'; if (route() === 'perfil') rerender(); },
+  'prog-tab'(el) { state.ui.progTab = el.dataset.v === 'logros' ? 'logros' : 'resumen'; if (route() === 'progreso') rerender(); },
   'prog-disc'(el) { state.ui.progDisc = el.dataset.v; rerender(); },
   async theme(el) { state.settings.theme = el.dataset.v; applyTheme(); await saveSettings(); rerender(); },
   photo(el) { openPhoto(el.dataset.id); },
