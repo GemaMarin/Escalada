@@ -1,5 +1,7 @@
 // Service worker: permite usar la app sin conexión (p. ej. en el rocódromo sin cobertura).
-const CACHE = 'escalada-v22';
+// Prefijo propio: no toca la caché de otras apps del mismo dominio (p. ej. Escalada_sputnik).
+const PREFIX = 'escalada-';
+const CACHE = `${PREFIX}v23`;
 const ASSETS = ['./', './index.html', './styles.css', './manifest.webmanifest', './icons/icon.svg', './icons/icon-192.png',
   './js/app.js', './js/db.js', './js/model.js', './js/insights.js', './js/charts.js', './js/demo.js', './js/sharma.js', './js/icons.js', './js/schedule.js', './js/notes.js', './js/shareimg.js',
   './data/sharma.json', './data/events.json'];
@@ -8,7 +10,7 @@ self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', (e) => {
-  e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+  e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k.startsWith(PREFIX) && k !== CACHE).map((k) => caches.delete(k))))
     .then(() => self.clients.claim()));
 });
 // Red primero (para recibir actualizaciones) y caché como respaldo.
