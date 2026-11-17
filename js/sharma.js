@@ -160,13 +160,13 @@ export function topoHTML(topo, color, { cls = '', label = '', line = false } = {
 }
 
 // Mapa general con todos los sectores (agrupados por imagen de fondo).
-export function sectorMapHTML(sectors, active) {
+export function sectorMapHTML(sectors, active, action = 'gym-sector', extra = '') {
   const byImage = {};
   for (const s of sectors) if (safeURL(s.topo?.src)) (byImage[s.topo.src] ||= []).push(s);
   return Object.entries(byImage).map(([src, list]) => `<figure class="topo map">
     <div class="topo-inner"><img src="${src}" alt="Plano de la sala" loading="lazy"
       onload="const s=this.nextElementSibling;s.setAttribute('viewBox','0 0 '+this.naturalWidth+' '+this.naturalHeight);s.style.display='block';this.parentNode.classList.add('ready')"
       onerror="this.closest('figure').classList.add('broken')">
-    <svg preserveAspectRatio="none" style="display:none">${list.map((s) => `<polygon class="${active === s.id ? 'on' : ''}" data-action="gym-sector" data-v="${esc(s.id)}" points="${s.topo.path.map(([x, y]) => `${x},${y}`).join(' ')}"><title>${esc(s.name)}</title></polygon>`).join('')}</svg></div>
+    <svg preserveAspectRatio="none" style="display:none">${list.map((s) => `<polygon class="${active === s.id ? 'on' : ''}" data-action="${action}" ${extra} data-v="${esc(s.id)}" points="${s.topo.path.map(([x, y]) => `${x},${y}`).join(' ')}"><title>${esc(s.name)}</title></polygon>`).join('')}</svg></div>
   </figure>`).join('');
 }

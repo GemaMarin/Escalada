@@ -1,7 +1,7 @@
 // Service worker: permite usar la app sin conexión (p. ej. en el rocódromo sin cobertura).
 // Prefijo propio: no toca la caché de otras apps del mismo dominio (p. ej. Escalada_sputnik).
 const PREFIX = 'escalada-';
-const CACHE = `${PREFIX}v23`;
+const CACHE = `${PREFIX}v24`;
 const ASSETS = ['./', './index.html', './styles.css', './manifest.webmanifest', './icons/icon.svg', './icons/icon-192.png',
   './js/app.js', './js/db.js', './js/model.js', './js/insights.js', './js/charts.js', './js/demo.js', './js/sharma.js', './js/icons.js', './js/schedule.js', './js/notes.js', './js/shareimg.js',
   './data/sharma.json', './data/events.json'];
