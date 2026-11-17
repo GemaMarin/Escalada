@@ -1022,3 +1022,10 @@ button.cd:active { transform: scale(.9); }
 .medal b { font-size: 12.5px; line-height: 1.2; }
 .medal small { font-size: 11px; color: var(--muted); line-height: 1.25; }
 :root[data-theme="dark"] .medal { background: linear-gradient(180deg, #2b1d10, var(--surface)); border-color: #4a3216; }
+
+/* Bloques y vías en la misma sesión */
+.disc-title { display: flex; align-items: center; gap: 8px; font-size: 18px; font-weight: 800; margin-top: 22px; }
+.disc-title .ic { width: 20px; height: 20px; color: var(--accent); }
+.plan-btns .both-btn { grid-column: 1 / -1; min-height: 42px; }
+.picker-map { display: grid; gap: 6px; margin: 10px 0 4px; }
+.picker-map small { text-align: center; font-size: 12.5px; }
